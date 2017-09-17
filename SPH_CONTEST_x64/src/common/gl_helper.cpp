@@ -22,65 +22,6 @@ float		tm_fps;
 GLuint glSphere = 65535;
 float  glRadius = 0.0;
 
-CGcontext cgContext = 0;
-CGprofile vert_profile = CG_PROFILE_UNKNOWN;
-CGprofile frag_profile = CG_PROFILE_UNKNOWN;
-CGprogram cgVP = 0;
-CGprogram cgFP = 0;
-
-void cgErrorCallback ()
-{
-	CGerror cerror = cgGetError();
-	if ( cerror ) {
-		const char *listing = cgGetLastListing ( cgContext );		
-		printf ( "CG: %s\n%s\n", cgGetErrorString( cerror ), listing );
-		exit (-1);
-	}
-}
-
-
-int createShader ( int n, std::string vname, std::string vfunc, std::string fname, std::string ffunc)
-{
-	char vnbuf[200];
-	char vfbuf[200];
-	char fnbuf[200];
-	char ffbuf[200];
-	strcpy ( vnbuf, vname.c_str() );
-	strcpy ( vfbuf, vfunc.c_str() );
-	strcpy ( fnbuf, fname.c_str() );
-	strcpy ( ffbuf, ffunc.c_str() );
-
-	if ( cgContext == 0 ) {
-		cgSetErrorCallback( cgErrorCallback );
-		cgContext = cgCreateContext();
-	}
-
-	// Select profiles
-	vert_profile = cgGLGetLatestProfile ( CG_GL_VERTEX );
-	cgGLSetOptimalOptions( vert_profile );
-
-	frag_profile = cgGLGetLatestProfile ( CG_GL_FRAGMENT );
-	cgGLSetOptimalOptions( frag_profile );
-
-	printf ( "Vertex profile:   %s\n", cgGetProfileString(vert_profile) );
-	printf ( "Fragment profile: %s\n", cgGetProfileString(frag_profile) );
-	printf ( " (See http.developer.nvidia.com/Cg/index_profiles.html)\n");
-
-	printf ( "Loading VP:       %s\n", vnbuf );
-	cgVP = cgCreateProgramFromFile( cgContext, CG_SOURCE, vnbuf, vert_profile, vfbuf, NULL );
-	cgGLLoadProgram( cgVP );
-
-	printf ( "Loading FP:       %s\n", fnbuf );
-	cgFP = cgCreateProgramFromFile( cgContext, CG_SOURCE, fnbuf, frag_profile, ffbuf, NULL );	
-	cgGLLoadProgram( cgFP );
-
-	cgGLSetManageTextureParameters ( cgContext, CG_FALSE ); 
-	cgGLBindProgram ( cgVP );
-	cgGLBindProgram ( cgFP );	
-
-	return 0;
-}
-
 void setSphereRadius ( float r )
 {
 	if ( glRadius == r ) return;

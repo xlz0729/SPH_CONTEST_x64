@@ -2,7 +2,6 @@
 #include <time.h>
 
 // 公共开源库头文件
-#include "GL\freeglut.h"
 #include "common\mtime.h"
 #include "common\gl_helper.h"
 #include "common\camera3d.h"
@@ -35,10 +34,14 @@
 static Camera3D	      g_camera;
 static ParticleSystem g_fluid_system;
 
+// 灯光
 static Vector4DF g_light[2];
-Vector3DF	g_obj_from;
-Vector3DF   g_obj_angles;
-Vector3DF	g_obj_dang;
+static Vector4DF g_light_to[2];
+static float     g_light_fov = 45.0f;
+
+static Vector3DF g_obj_from;
+static Vector3DF g_obj_angles;
+static Vector3DF g_obj_dang;
 
 static float g_window_width = 1024;
 static float g_window_height = 768;
@@ -48,6 +51,7 @@ static int	 g_lastX = -1;
 static int	 g_lastY = -1;
 static int	 g_mode = 0;
 static int	 g_dragging = 0;
+static int   g_color_mode = 0;
 
 
 // 绘制场景
@@ -383,15 +387,6 @@ static void keyboard_func(unsigned char key, int x, int y) {
 	case 'L':
 		g_mode = MODE_LIGHTPOS;
 		break;
-		// 切换流体粒子显示模式
-	case 'j':
-	case 'J':
-	{
-		int d = g_fluid_system.getParam(PDRAWMODE) + 1;
-		if (d > 2) d = 0;
-		g_fluid_system.SetParam(PDRAWMODE, d);
-	}
-	break;
 	// 移动相机/（视觉效果上等同于移动物体）
 	case 'a':
 	case 'A':
@@ -420,13 +415,13 @@ static void keyboard_func(unsigned char key, int x, int y) {
 		// 上一个场景
 	case '[':
 		g_fluid_system.IncParam(PEXAMPLE, -1, 0, 3);
-		g_fluid_system.Setup(true);
+		g_fluid_system.setup(true);
 		UpdateEmit();
 		break;
 		// 下一个场景
 	case ']':
 		g_fluid_system.IncParam(PEXAMPLE, +1, 0, 3);
-		g_fluid_system.Setup(true);
+		g_fluid_system.setup(true);
 		UpdateEmit();
 		break;
 	case 27:
@@ -453,7 +448,6 @@ static void mouse_click_func(int button, int state, int x, int y) {
 }
 
 static void mouse_move_func(int x, int y) {
-
 	g_fluid_system.SelectParticle(x, y, g_window_width, g_window_height, g_camera);
 }
 
@@ -489,7 +483,7 @@ static void mouse_drag_func(int x, int y) {
 			g_obj_angles.z -= dy*.005;
 			printf("Obj Angs:  %f %f %f\n", g_obj_angles.x, g_obj_angles.y, g_obj_angles.z);
 		}
-		g_fluid_system.SetVec(PEMIT_ANG, Vector3DF(g_obj_angles.x, g_obj_angles.y, g_obj_angles.z));
+		g_fluid_system.setVec(PEMIT_ANG, Vector3DF(g_obj_angles.x, g_obj_angles.y, g_obj_angles.z));
 		break;
 	case MODE_OBJPOS:
 		if (g_dragging == DRAG_LEFT) {
@@ -501,7 +495,7 @@ static void mouse_drag_func(int x, int y) {
 			g_obj_from.z -= dy*.1;
 			printf("Obj:  %f %f %f\n", g_obj_from.x, g_obj_from.y, g_obj_from.z);
 		}
-		g_fluid_system.SetVec(PEMIT_POS, Vector3DF(g_obj_from.x, g_obj_from.y, g_obj_from.z));
+		g_fluid_system.setVec(PEMIT_POS, Vector3DF(g_obj_from.x, g_obj_from.y, g_obj_from.z));
 		break;
 	case MODE_LIGHTPOS:
 		if (g_dragging == DRAG_LEFT) {
@@ -525,6 +519,10 @@ static void mouse_drag_func(int x, int y) {
 		g_lastX = x;
 		g_lastY = y;
 	}
+}
+
+void idle_func()
+{
 }
 
 // 初始化openGL
@@ -570,6 +568,30 @@ static void glInit() {
 	glutKeyboardFunc(keyboard_func);
 	glutMouseFunc(mouse_click_func);
 	glutMotionFunc(mouse_drag_func);
+	glutIdleFunc(idle_func);
+
+	// 初始化摄像机
+	g_camera.setOrbit(Vector3DF(200, 30, 0), Vector3DF(2, 2, 2), 400, 400);
+	g_camera.setFov(35);
+	g_camera.updateMatrices();
+
+	g_light[0].x = 0;		g_light[0].y = 200;	g_light[0].z = 0; g_light[0].w = 1;
+	g_light_to[0].x = 0;	g_light_to[0].y = 0;	g_light_to[0].z = 0; g_light_to[0].w = 1;
+
+	g_light[1].x = 55;		g_light[1].y = 140;	g_light[1].z = 50;	g_light[1].w = 1;
+	g_light_to[1].x = 0;	g_light_to[1].y = 0;	g_light_to[1].z = 0;		g_light_to[1].w = 1;
+
+	g_light_fov = 45.0f;
+
+	g_obj_from.x = 0;		g_obj_from.y = 0;		g_obj_from.z = 20;		// emitter
+	g_obj_angles.x = 118.7;	g_obj_angles.y = 200;	g_obj_angles.z = 1.0;
+	g_obj_dang.x = 1;	g_obj_dang.y = 1;		g_obj_dang.z = 0;
+
+	g_fluid_system.setup(true);
+	g_fluid_system.setVec(PEMIT_ANG, Vector3DF(g_obj_angles.x, g_obj_angles.y, g_obj_angles.z));
+	g_fluid_system.setVec(PEMIT_POS, Vector3DF(g_obj_from.x, g_obj_from.y, g_obj_from.z));
+
+	g_fluid_system.setParam(PCLR_MODE, g_color_mode);
 }
 
 int main(int argc, char **argv) {
@@ -589,8 +611,6 @@ int main(int argc, char **argv) {
 	g_fluid_system.setRender();
 	
 	glutMainLoop();
-
-	g_fluid_system.ExitParticleSystem();
 
 	return 0;
 }

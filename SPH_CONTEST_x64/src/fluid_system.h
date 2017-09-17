@@ -27,6 +27,10 @@ misrepresented as being the original software.
 // 标准库头文件
 #include <iostream>
 #include <string>
+#include <vector>
+#include <fstream>
+
+#include <time.h>
 
 // 公共开源库头文件
 #include "common\vector.h"
@@ -71,7 +75,7 @@ misrepresented as being the original software.
 #define PFORCE_MIN				20	// 最小力
 #define PFORCE_MAX				21	// 最大力
 #define PMAX_FRAC				22	
-#define PDRAWMODE				23	// 绘制方式
+#define PDRAWMODE				23	// 绘制方式，已弃用
 #define PDRAWSIZE				24	
 #define PDRAWTEXT				26	// 绘制内容
 #define PCLR_MODE				27
@@ -150,23 +154,17 @@ const int max_num_adj_grid_cells_cpu = 27;
 struct Particle {
 
 	// offset - TOTAL: 120 (must be multiple of 12 = sizeof(Vector3DF) )
-	Vector3DF		fpos;									// 0
-	Vector3DF		fpredicted_pos;							// 12
-	Vector3DF		fvel;									// 24
-	Vector3DF		fvel_eval;								// 36
-	Vector3DF		fcorrection_pressure_force;				// 48
-	Vector3DF		fforce;									// 60
-	Vector3DF		fsum_gradw;								// 72
-	float			fsum_gradw_dot;							// 84
-	float			fpressure;								// 88
-	float			fcorrection_pressure;					// 92
-	float			fdensity_reciprocal;					// 96
-	float			fdensityError;							// 100
-	int				fparticle_grid_cell_index;				// 104
-	int				fnext_particle_index_in_the_same_cell;	// 108			
-	DWORD			fclr;									// 112
-	int				fpadding1;								// 116
-	int				fpadding2;								// 120	填充字节 成员对齐，参见：《高质量程序设计指南C/C++语言》（第三版）P147， 8.1.4 成员对齐
+	Vector3DF pos;                                  // 0
+	Vector3DF vel;                                  // 12
+	Vector3DF vel_eval;                             // 24
+	Vector3DF force;                                // 36
+	float     pressure;	                            // 48
+	float     correction_pressure_force;            // 52
+	float     density;                              // 56
+	int	      particle_grid_cell_index;             // 60
+	int       next_particle_index_in_the_same_cell;	// 64			
+	DWORD     clr;                                  // 68
+	int       padding;                              // 72 填充字节 成员对齐，参见：《高质量程序设计指南C / C++语言》（第三版）P147， 8.1.4 成员对齐
 };
 
 
@@ -180,9 +178,15 @@ public:
 	~ParticleSystem();
 
 	// set函数
-	void        setup(bool bStart);
-	void        setRender();
-	inline void setToggle(int p);
+	void         setup(bool bStart);
+	void         setRender();
+	inline void  setToggle(int p);
+	inline void  setParam(int p, int v);
+	inline void  setParam(int p, float v);
+	inline float IncParam(int p, float v, float mn, float mx);
+	inline void  setVec(int p, Vector3DF v);
+
+	int SelectParticle(int x, int y, int wx, int wy, Camera3D& cam);
 
 	// get函数
 	std::string      getModeStr();
@@ -199,7 +203,7 @@ public:
 	// 运行函数
 	void Run();
 	void RunCPUSPH();
-	void RunCPUPCISPH();
+	void RunCPUPCISPH() {}
 
 	// 绘制函数
 	inline void DrawParticleInfo();
@@ -212,6 +216,8 @@ private:
 	float lutKernelPressureGrad[lutSize];
 
 	std::string	scene_name_;
+	int	        texture_[1];
+	int	        sphere_points_;
 
 	// 模拟参数
 	float     param_[MAX_PARAM];
@@ -221,10 +227,12 @@ private:
 	// XML 设置文件
 	XmlSettings	xml;
 
+	std::ofstream outfileParticles;
+	std::ifstream infileParticles;
+
 	// 绘制函数相关变量
 	int    selected_;
 	int	   vbo_[3];
-	DWORD* clr_;
 	Image  image_;
 
 	// SPH光滑核函数系数
@@ -241,18 +249,14 @@ private:
 	int	  frame_;
 
 	// 粒子相关属性
-	int	       num_points_;
-	Vector3DF* pos_;
-	Vector3DF* vel_;
-	Vector3DF* vel_eval_;
-	Vector3DF* force_;
-	Vector3DF* correction_pressure_force_;
-	float*     pressure_;
-	float*     density_;
-	uint*      particle_grid_cell_index_;             // 每个粒子所在的cell的索引
-	uint*      next_particle_index_in_the_same_cell_; // 同一个cell中下个粒子的索引
+	std::vector<Particle> points;
+	int	                  num_points_;
+	
 	uint*      neighbor_index_;
 	uint*      neighbor_particle_numbers_;
+
+	char*      pack_fluid_particle_buf_;
+	int*       pack_grid_buf_;
 
 	// 加速数据结构---网格相关变量
 	uint*     grid_head_cell_particle_index_array_;  // grid中每个cell中第一个粒子的索引
@@ -261,9 +265,9 @@ private:
 	Vector3DI grid_res_;                             // grid的分辨率，即x，y，z方向上各有多少个cell
 	Vector3DF grid_min_;
 	Vector3DF grid_max_;
-	//Vector3DF grid_size_;
+	Vector3DF grid_size_;
 	Vector3DF grid_delta_;
-	uint*     cluster_cell_;                         // cell集群
+	int	      grid_search_;
 	int	      grid_adj_cnt_;
 	int       grid_neighbor_cell_index_offset_[max_num_adj_grid_cells_cpu];
 
@@ -282,10 +286,10 @@ private:
 
 	// 私有函数
 	// SPH函数
-	void InsertParticlesCPU(const uint& num_particle);
+	void InsertParticlesCPU();
 	void ComputePressureGrid();
 	void ComputeForceGrid();
-	void AdvanceStepSimpleCollision(float time_step);
+	void AdvanceStepSimpleCollision();
 
 	int       getGridCell(const Vector3DF& pos, Vector3DI& gc);
 	int       getGridCell(int p, Vector3DI& gc);
@@ -310,11 +314,26 @@ private:
 	void DrawDomain(Vector3DF& domain_min, Vector3DF& domain_max);
 	void DrawText();
 
+	void setDefaultParams();
 	void setExampleParams(bool bStart);
 	void setKernels();
 	void setSpacing();
+	void setInitParticleVolumeFromFile(const Vector3DF& minVec, const Vector3DF& maxVec);
+	void setInitParticleVolume(const Vector3DI& numParticlesXYZ, const Vector3DF& lengthXYZ, const float jitter);
+	void setGridAllocate(const float border);
 
+	void AllocatePackBuf();
+	void AllocateParticlesMemory(int cnt);
+
+	// 读取XML文件
 	void ParseXML(std::string name, int id, bool bStart);
+
+	void Record(int param, std::string name, mint::Time& start);
+
+	// 从文件中读取粒子模型
+	int ReadInFluidParticles(const char* filename, Vector3DF& minVec, Vector3DF& maxVec);
+
+	inline float frand();
 };
 
 
@@ -360,6 +379,29 @@ inline void ParticleSystem::setToggle(int p) {
 
 inline void ParticleSystem::DrawParticleInfo() {
 	DrawParticleInfo(this->selected_);
+}
+
+inline float ParticleSystem::frand() {
+	return rand() / (float)RAND_MAX;
+}
+
+inline float ParticleSystem::IncParam(int p, float v, float mn, float mx) {
+	param_[p] += v;
+	if (param_[p] < mn) param_[p] = mn;
+	if (param_[p] > mx) param_[p] = mn;
+	return param_[p];
+}
+
+inline void ParticleSystem::setParam(int p, float v) {
+	param_[p] = v;
+}
+
+inline void ParticleSystem::setParam(int p, int v) {
+	param_[p] = (float)v;
+}
+
+inline void ParticleSystem::setVec(int p, Vector3DF v) {
+	vec_[p] = v;
 }
 
 #endif
