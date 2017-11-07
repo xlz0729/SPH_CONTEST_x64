@@ -333,7 +333,7 @@ void ParticleSystem::ComputePressureGrid() {
 						j = points[j].next_particle_index_in_the_same_cell;
 						continue;
 					}
-					Vector3DF dst_graphics_scale = points[j].pos;
+					Vector3DF dst_graphics_scale = points[i].pos;
 					dst_graphics_scale -= points[j].pos;
 					const float dist_square_sim_scale = sim_scale_square*(dst_graphics_scale.x*dst_graphics_scale.x + dst_graphics_scale.y*dst_graphics_scale.y + dst_graphics_scale.z*dst_graphics_scale.z);
 					if (dist_square_sim_scale <= smooth_radius_square) {
