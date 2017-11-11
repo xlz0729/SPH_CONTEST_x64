@@ -40,24 +40,7 @@ ParticleSystem::ParticleSystem() {
 
 	points.clear();
 
-	neighbor_index_ = 0x0;
-	neighbor_particle_numbers_ = 0x0;
-
-	grid_head_cell_particle_index_array_ = 0x0;
-	grid_particles_number_ = 0x0;
 	grid_total_ = 0;
-	grid_search_ = 0;
-	grid_adj_cnt_ = 0;
-
-	neighbor_particles_num_ = 0;
-	neighbor_particles_max_num_ = 0;
-	neighbor_table_ = 0x0;
-	neighbor_dist_ = 0x0;
-
-	pack_fluid_particle_buf_ = 0x0;
-	pack_grid_buf_ = 0x0;
-
-	selected_ = -1;
 
 	if (!xml.Load("scene.xml")) {
 		printf("ERROR: Problem loading scene.xml. Check formatting.\n");
@@ -71,7 +54,7 @@ ParticleSystem::~ParticleSystem() {
 }
 
 // 程序运行入口, 内存分配
-void ParticleSystem::setup(bool bStart) {
+void ParticleSystem::setUp(bool bStart) {
 	frame_ = 0;
 	time_ = 0;
 
@@ -86,8 +69,6 @@ void ParticleSystem::setup(bool bStart) {
 	setSpacing();
 
 	ComputeGasConstAndTimeStep(param_[PMAXDENSITYERRORALLOWED]);
-
-	ClearNeighborTable();
 
 	float lengthX = vec_[PINITPARTICLEMAX].x - vec_[PINITPARTICLEMIN].x;
 	float lengthY = vec_[PINITPARTICLEMAX].y - vec_[PINITPARTICLEMIN].y;
@@ -119,8 +100,6 @@ void ParticleSystem::setup(bool bStart) {
 		num_points_ = 0;
 		setInitParticleVolume(numParticlesXYZ, lengthXYZ, 0.1);
 	}
-
-	AllocatePackBuf();
 
 	setGridAllocate(1.0);
 }
@@ -189,11 +168,9 @@ int ParticleSystem::SelectParticle(int x, int y, int wx, int wy, Camera3D& cam) 
 		pnt.y = (pnt.y + 1.0)*0.5 * wy;
 
 		if (x > pnt.x - 8 && x < pnt.x + 8 && y > pnt.y - 8 && y < pnt.y + 8) {
-			selected_ = n;
 			return n;
 		}
 	}
-	selected_ = -1;
 	return -1;
 }
 
@@ -205,8 +182,8 @@ std::string ParticleSystem::getModeStr() {
 	case RUN_CPU_SPH:
 		buf = "SIMULATE CPU SPH";
 		break;
-	case RUN_CPU_PCISPH:
-		buf = "SIMULATE CPU PCISPH";
+	case RUN_CPU_PBF:
+		buf = "SIMULATE CPU PBF";
 		break;
 	};
 	return buf;
@@ -229,8 +206,8 @@ void ParticleSystem::Run() {
 	case RUN_CPU_SPH:
 		RunCPUSPH();
 		break;
-	case RUN_CPU_PCISPH:
-		RunCPUPCISPH();
+	case RUN_CPU_PBF:
+		RunCPUPBF();
 		break;
 	}
 
@@ -263,17 +240,44 @@ void ParticleSystem::RunCPUSPH() {
 	Record(PTIME_ADVANCE, "Advance CPU SPH", start);
 }
 
+void ParticleSystem::RunCPUPBF() {
+	mint::Time start;
+
+	// 插入粒子
+	start.SetSystemTime(ACC_NSEC);
+	InsertParticlesCPU();
+	Record(PTIME_INSERT, "Insert CPU SPH", start);
+
+	// 计算压力
+	start.SetSystemTime(ACC_NSEC);
+	ComputePressureGrid();
+	Record(PTIME_PRESS, "Press CPU SPH", start);
+
+	// 计算外力
+	start.SetSystemTime(ACC_NSEC);
+	ComputeForceGrid();
+	Record(PTIME_FORCE, "Force CPU SPH", start);
+
+	// PBF
+	PositionBasedFluid();
+
+	// 移动粒子
+	start.SetSystemTime(ACC_NSEC);
+	AdvanceStepSimpleCollision();
+	Record(PTIME_ADVANCE, "Advance CPU SPH", start);
+}
+
 void ParticleSystem::InsertParticlesCPU() {
 
-	memset(grid_head_cell_particle_index_array_, GRID_UNDEF, grid_total_ * sizeof(uint));
-	memset(grid_particles_number_,               0,          grid_total_ * sizeof(uint));
+	grid.clear();
+	grid.resize(grid_total_, Cell());
 
 	const int xns = grid_res_.x;
 	const int yns = grid_res_.y;
 	const int zns = grid_res_.z;
 
-	param_[PSTAT_OCCUPANCY] = 0.0; // 有粒子的grid的数量
-	param_[PSTAT_GRIDCOUNT] = 0.0; // grid中粒子的总数
+	grid_nonempty_cell_number = 0;
+	grid_particle_number = 0;
 
 	for (int idx = 0; idx < num_points_; ++idx) {
 		Vector3DI gridCell;
@@ -281,13 +285,13 @@ void ParticleSystem::InsertParticlesCPU() {
 
 		if (gridCell.x >= 0 && gridCell.x < xns && gridCell.y >= 0 && gridCell.y < yns && gridCell.z >= 0 && gridCell.z < zns) {
 			points[idx].particle_grid_cell_index = gridCellIndex;
-			points[idx].next_particle_index_in_the_same_cell = grid_head_cell_particle_index_array_[gridCellIndex];
-			if (points[idx].next_particle_index_in_the_same_cell == GRID_UNDEF) {
-				param_[PSTAT_OCCUPANCY] += 1.0;
+			points[idx].next_particle_index_in_the_same_cell = grid[gridCellIndex].first_particle_index;
+			if (points[idx].next_particle_index_in_the_same_cell == UNDEFINE) {
+				grid_nonempty_cell_number += 1;
 			}
-			grid_head_cell_particle_index_array_[gridCellIndex] = idx;
-			grid_particles_number_[gridCellIndex] += 1;
-			param_[PSTAT_GRIDCOUNT] += 1.0;
+			grid[gridCellIndex].first_particle_index = idx;
+			grid[gridCellIndex].particle_number += 1;
+			grid_particle_number += 1;
 		}
 		else {
 			Vector3DF vel = points[idx].vel;
@@ -320,15 +324,15 @@ void ParticleSystem::ComputePressureGrid() {
 		float sum = 0.0;
 
 		const uint i_cell_index = points[i].particle_grid_cell_index;
-		if (i_cell_index != GRID_UNDEF) {
-			for (int cell = 0; cell < max_num_adj_grid_cells_cpu; cell++) {
+		if (i_cell_index != UNDEFINE) {
+			for (int cell = 0; cell < grid_adj_cnt_; cell++) {
 				const int neighbor_cell_index = i_cell_index + grid_neighbor_cell_index_offset_[cell];
-				if (neighbor_cell_index == GRID_UNDEF || neighbor_cell_index < 0 || neighbor_cell_index > grid_total_ - 1) {
+				if (neighbor_cell_index == UNDEFINE || neighbor_cell_index < 0 || neighbor_cell_index > grid_total_ - 1) {
 					continue;
 				}
 
-				int j = grid_head_cell_particle_index_array_[neighbor_cell_index];
-				while (j != GRID_UNDEF) {
+				int j = grid[neighbor_cell_index].first_particle_index;
+				while (j != UNDEFINE) {
 					if (i == j) {
 						j = points[j].next_particle_index_in_the_same_cell;
 						continue;
@@ -385,15 +389,15 @@ void ParticleSystem::ComputeForceGrid() {
 		float	  ipress = points[i].pressure;
 		float	  idensity = points[i].density;
 
-		if (i_cell_index != GRID_UNDEF) {
-			for (int cell = 0; cell < max_num_adj_grid_cells_cpu; cell++) {
+		if (i_cell_index != UNDEFINE) {
+			for (int cell = 0; cell < grid_adj_cnt_; cell++) {
 				const int neighbor_cell_index = i_cell_index + grid_neighbor_cell_index_offset_[cell];
-				if (neighbor_cell_index == GRID_UNDEF || (neighbor_cell_index < 0 || neighbor_cell_index > grid_total_ - 1)) {
+				if (neighbor_cell_index == UNDEFINE || (neighbor_cell_index < 0 || neighbor_cell_index > grid_total_ - 1)) {
 					continue;
 				}
 
-				int j = grid_head_cell_particle_index_array_[neighbor_cell_index];
-				while (j != GRID_UNDEF) {
+				int j = grid[neighbor_cell_index].first_particle_index;
+				while (j != UNDEFINE) {
 					if (i == j) {
 						j = points[j].next_particle_index_in_the_same_cell;
 						continue;
@@ -452,7 +456,7 @@ void ParticleSystem::AdvanceStepSimpleCollision() {
 	float diff;
 
 	for (int i = 0; i < num_points_; i++) {
-		if (points[i].particle_grid_cell_index == GRID_UNDEF)
+		if (points[i].particle_grid_cell_index == UNDEFINE)
 			continue;
 
 		Vector3DF acceleration = points[i].force;// + points[i].correction_pressure_force;
@@ -600,18 +604,6 @@ void ParticleSystem::ComputeGasConstAndTimeStep(float densityVariation) {
 
 }
 
-void ParticleSystem::ClearNeighborTable() {
-
-	if (neighbor_table_ != 0x0)
-		free(neighbor_table_);
-	if (neighbor_dist_ != 0x0)
-		free(neighbor_dist_);
-	neighbor_table_ = 0x0;
-	neighbor_dist_ = 0x0;
-	neighbor_particles_num_ = 0;
-	neighbor_particles_max_num_ = 0;
-}
-
 // 边界碰撞
 Vector3DF ParticleSystem::BoxBoundaryForce(const uint i) {
 
@@ -710,30 +702,6 @@ void ParticleSystem::CollisionHandlingSimScale(Vector3DF& pos, Vector3DF& vel) {
 		vel -= axis * (float)axis.Dot(vel) * reflect;
 		vel.z *= damping;
 	}
-}
-
-void ParticleSystem::DrawParticleInfo(int p) {
-
-	char disp[256];
-
-	glColor4f(1.0, 1.0, 1.0, 1.0);
-	sprintf(disp, "Particle: %d", p);
-	drawText2D(10, 20, disp);
-
-	Vector3DI gc;
-	int gs = getGridCell(p, gc);
-	sprintf(disp, "Grid Cell:    <%d, %d, %d> id: %d", gc.x, gc.y, gc.z, gs);
-	drawText2D(10, 40, disp);
-
-	sprintf(disp, "Neighbors:    ");
-
-	int cnt = *(neighbor_particle_numbers_ + p);
-	int ndx = *(neighbor_index_ + p);
-	for (int n = 0; n < cnt; n++) {
-		sprintf(disp, "%s%d, ", disp, neighbor_table_[ndx]);
-		ndx++;
-	}
-	drawText2D(10, 70, disp);
 }
 
 // 绘制函数
@@ -1199,36 +1167,24 @@ void ParticleSystem::setGridAllocate(const float border) {
 	grid_delta_ = grid_res_;
 	grid_delta_ /= grid_size_;
 
-	if (grid_head_cell_particle_index_array_ != 0x0)
+	/*if (grid_head_cell_particle_index_array_ != 0x0)
 		free(grid_head_cell_particle_index_array_);
 	if (grid_particles_number_ != 0x0)
 		free(grid_particles_number_);
 	grid_head_cell_particle_index_array_ = (uint*)malloc(sizeof(uint*) * grid_total_);
 	grid_particles_number_ = (uint*)malloc(sizeof(uint*) * grid_total_);
 	memset(grid_head_cell_particle_index_array_, GRID_UNDEF, grid_total_ * sizeof(uint));
-	memset(grid_particles_number_, GRID_UNDEF, grid_total_ * sizeof(uint));
+	memset(grid_particles_number_, GRID_UNDEF, grid_total_ * sizeof(uint));*/
+
+	grid.reserve(grid_total_ + 1);
 
 	param_[PSTAT_GMEM] = 12 * grid_total_;
 
-	grid_search_ = 3;
 	int cell = 0;
 	for (int y = -1; y < 2; y++)
 		for (int z = -1; z < 2; z++)
 			for (int x = -1; x < 2; x++)
 				grid_neighbor_cell_index_offset_[cell++] = y * grid_res_.x *grid_res_.z + z * grid_res_.x + x;
-
-	grid_adj_cnt_ = grid_search_ * grid_search_ * grid_search_;
-
-	if (pack_grid_buf_ != 0x0)
-		free(pack_grid_buf_);
-	pack_grid_buf_ = (int*)malloc(sizeof(int) * grid_total_);
-}
-
-void ParticleSystem::AllocatePackBuf() {
-
-	if (pack_fluid_particle_buf_ != 0x0)
-		free(pack_fluid_particle_buf_);
-	pack_fluid_particle_buf_ = (char*)malloc(sizeof(Particle) * param_[PMAXNUM]);
 }
 
 // 分配内存
@@ -1236,14 +1192,6 @@ void ParticleSystem::AllocateParticlesMemory(int cnt) {
 	if (!points.empty())
 		points.clear();
 	points.resize(cnt);
-
-	if (neighbor_index_ != 0x0)
-		free(neighbor_index_);
-	neighbor_index_ = (uint*)malloc(sizeof(uint) * param_[PMAXNUM]);
-
-	if (neighbor_particle_numbers_ != 0x0)
-		free(neighbor_particle_numbers_);
-	neighbor_particle_numbers_ = (uint*)malloc(sizeof(uint) * param_[PMAXNUM]);
 
 	param_[PSTAT_PMEM] = sizeof(Particle) * cnt;
 }

@@ -42,21 +42,17 @@ misrepresented as being the original software.
 // 宏定义
 #define MAX_PARAM				60
 #define GRID_UCHAR				0xFF
-#define GRID_UNDEF				0xFFFFFFFF // 设定0xFFFFFFFF为未定义值
+#define UNDEFINE				0xFFFFFFFF // 设定0xFFFFFFFF为未定义值
 
 #define RUN_CPU_SPH				0
-#define RUN_CUDA_INDEX_SPH		1	
-#define RUN_CUDA_FULL_SPH		2
-#define RUN_CPU_PCISPH			3
-#define RUN_CUDA_INDEX_PCISPH	4 
-#define RUN_CUDA_FULL_PCISPH	5
+#define RUN_CPU_PBF				1
 
 // 标量参数
 #define PRUN_MODE				0	
 #define PMAXNUM					1	// 最大粒子数量
 #define PEXAMPLE				2	
 #define PSIMSIZE				3	  
-#define PSIMSCALE				4	// 缩放比例1:2
+#define PSIMSCALE				4	// 缩放比例
 #define PGRID_DENSITY			5	// grid的密度
 #define PGRIDSIZEREALSCALE		6	// grid的真实缩放比例
 #define PVISC					7	// 体积
@@ -80,8 +76,6 @@ misrepresented as being the original software.
 #define PDRAWTEXT				26	// 绘制内容
 #define PCLR_MODE				27
 #define PPOINT_GRAV_AMT			28	
-#define PSTAT_OCCUPANCY			29	// 有粒子的grid的数量
-#define PSTAT_GRIDCOUNT			30	// grid中粒子的总数
 #define PSTAT_NEIGHCNT			31	
 #define PSTAT_NEIGHCNTMAX		32	// 领域内最大粒子数
 #define PSTAT_SEARCHCNT			33	
@@ -141,9 +135,8 @@ misrepresented as being the original software.
 #define	PDRAWGRIDBOUND			17
 #define PUSELOADEDSCENE			18
 
-
 // 全局变量
-const int max_num_adj_grid_cells_cpu = 27;
+const int grid_adj_cnt_ = 27;
 
 
 // 在需要高频率（如渲染循环中）访问数据的时候，一般情况下SOA的效率高于AOS，
@@ -151,34 +144,41 @@ const int max_num_adj_grid_cells_cpu = 27;
 // 虽然AOS的结构可能更适合面向对象设计，但是在高度依赖效率的地方应该使用SOA。
 // 
 // 使用SOA 代替 AOS 结构体Particle只是用来计算粒子所占用内存大小的辅助数据结构
-struct Particle {
-
+struct Particle
+{
 	// offset - TOTAL: 120 (must be multiple of 12 = sizeof(Vector3DF) )
 	Vector3DF pos;                                  // 0
 	Vector3DF vel;                                  // 12
 	Vector3DF vel_eval;                             // 24
 	Vector3DF force;                                // 36
 	float     pressure;	                            // 48
-	float     correction_pressure_force;            // 52
 	float     density;                              // 56
 	int	      particle_grid_cell_index;             // 60
-	int       next_particle_index_in_the_same_cell;	// 64			
-	DWORD     clr;                                  // 68
-	int       padding;                              // 72 填充字节 成员对齐，参见：《高质量程序设计指南C / C++语言》（第三版）P147， 8.1.4 成员对齐
+	int       next_particle_index_in_the_same_cell;	// 64 填充字节 成员对齐，参见：《高质量程序设计指南C / C++语言》（第三版）P147， 8.1.4 成员对齐
+	DWORD	  clr;
+};
+
+struct Cell
+{
+	uint first_particle_index;   // 每个cell中第一个粒子的索引
+	uint particle_number;        // 每个cell中粒子的数量
+	Cell() : first_particle_index(UNDEFINE), particle_number(0){}
+	Cell(uint index, uint number) : first_particle_index(index), particle_number(number){}
 };
 
 
 // 函数命名规范:
 // set和get函数开头第一个字母小写，函数名中每个单词开头字母大写
 //     其余函数开头第一个字母大写，函数名中每个单词开头字母大写
-class ParticleSystem {
+class ParticleSystem
+{
 
 public:
 	ParticleSystem();
 	~ParticleSystem();
 
 	// set函数
-	void         setup(bool bStart);
+	void         setUp(bool bStart);
 	void         setRender();
 	inline void  setToggle(int p);
 	inline void  setParam(int p, int v);
@@ -193,7 +193,6 @@ public:
 	inline bool      getToggle(int p);
 	inline int       getNumPoints();
 	inline Vector3DF getGridRes();
-	inline int       getSelected();
 	inline int       getGridTotal();
 	inline int       getGridAdjCnt();
 	inline float     getParam(int p);
@@ -203,10 +202,9 @@ public:
 	// 运行函数
 	void Run();
 	void RunCPUSPH();
-	void RunCPUPCISPH() {}
+	void RunCPUPBF();
 
 	// 绘制函数
-	inline void DrawParticleInfo();
 	void        Draw(Camera3D& cam, float rad);
 
 private:
@@ -231,7 +229,6 @@ private:
 	std::ifstream infileParticles;
 
 	// 绘制函数相关变量
-	int    selected_;
 	int	   vbo_[3];
 	Image  image_;
 
@@ -251,33 +248,20 @@ private:
 	// 粒子相关属性
 	std::vector<Particle> points;
 	int	                  num_points_;
-	
-	uint*      neighbor_index_;
-	uint*      neighbor_particle_numbers_;
-
-	char*      pack_fluid_particle_buf_;
-	int*       pack_grid_buf_;
 
 	// 加速数据结构---网格相关变量
-	uint*     grid_head_cell_particle_index_array_;  // grid中每个cell中第一个粒子的索引
-	uint*     grid_particles_number_;                // grid中每个cell中粒子的数量
-	int       grid_total_;                           // grid的数量
-	Vector3DI grid_res_;                             // grid的分辨率，即x，y，z方向上各有多少个cell
-	Vector3DF grid_min_;
-	Vector3DF grid_max_;
-	Vector3DF grid_size_;
-	Vector3DF grid_delta_;
-	int	      grid_search_;
-	int	      grid_adj_cnt_;
-	int       grid_neighbor_cell_index_offset_[max_num_adj_grid_cells_cpu];
+	std::vector<Cell>	grid;
+	int					grid_total_;                           // grid中cell的数量
+	Vector3DI			grid_res_;                             // x，y，z方向上各有多少个cell
+	Vector3DF			grid_min_;
+	Vector3DF			grid_max_;
+	Vector3DF			grid_size_;
+	Vector3DF			grid_delta_;
+	int					grid_neighbor_cell_index_offset_[grid_adj_cnt_];
+	int					grid_nonempty_cell_number;              // grid中有粒子的cell的数量
+	int					grid_particle_number;					// grid中粒子的数量
 
-	// 加速数据结构---邻居表相关变量
-	int    neighbor_particles_num_;
-	int    neighbor_particles_max_num_;
-	int*   neighbor_table_;
-	float* neighbor_dist_;
-
-	// 边界碰撞处理相关变量
+	// 边界碰撞相关变量
 	bool  addBoundaryForce;
 	float maxBoundaryForce;
 	float boundaryForceFactor;
@@ -290,7 +274,10 @@ private:
 	void ComputePressureGrid();
 	void ComputeForceGrid();
 	void AdvanceStepSimpleCollision();
+	void ComputeDensity() {}
+	void PositionBasedFluid() {}
 
+	// 加速数据结构---网格相关函数
 	int       getGridCell(const Vector3DF& pos, Vector3DI& gc);
 	int       getGridCell(int p, Vector3DI& gc);
 	Vector3DI getCell(int c);
@@ -302,14 +289,12 @@ private:
 	float KernelPressureGradLut(float dist, float sr);
 
 	void ComputeGasConstAndTimeStep(float densityVariation);
-	void ClearNeighborTable();
 
 	// 边界碰撞函数
 	Vector3DF BoxBoundaryForce(const uint i);
 	void      CollisionHandlingSimScale(Vector3DF& pos, Vector3DF& vel);
 
 	// 绘制函数
-	void DrawParticleInfo(int p);
 	void DrawGrid();
 	void DrawDomain(Vector3DF& domain_min, Vector3DF& domain_max);
 	void DrawText();
@@ -322,7 +307,6 @@ private:
 	void setInitParticleVolume(const Vector3DI& numParticlesXYZ, const Vector3DF& lengthXYZ, const float jitter);
 	void setGridAllocate(const float border);
 
-	void AllocatePackBuf();
 	void AllocateParticlesMemory(int cnt);
 
 	// 读取XML文件
@@ -349,16 +333,12 @@ inline Vector3DF ParticleSystem::getGridRes() {
 	return this->grid_res_;
 }
 
-inline int ParticleSystem::getSelected() {
-	return this->selected_;
-}
-
 inline int ParticleSystem::getGridTotal() {
 	return this->grid_total_;
 }
 
 inline int ParticleSystem::getGridAdjCnt() {
-	return this->grid_adj_cnt_;
+	return grid_adj_cnt_;
 }
 
 inline float ParticleSystem::getParam(int p) {
@@ -375,10 +355,6 @@ inline float ParticleSystem::getDT() {
 
 inline void ParticleSystem::setToggle(int p) {
 	this->toggle_[p] = !this->toggle_[p];
-}
-
-inline void ParticleSystem::DrawParticleInfo() {
-	DrawParticleInfo(this->selected_);
 }
 
 inline float ParticleSystem::frand() {

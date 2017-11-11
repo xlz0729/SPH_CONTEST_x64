@@ -133,12 +133,6 @@ static void draw2D() {
 	glMatrixMode(GL_MODELVIEW);
 	glLoadIdentity();
 
-	// 粒子信息
-	if (g_fluid_system.getSelected() != -1) {
-		g_fluid_system.DrawParticleInfo();
-		return;
-	}
-
 	char disp[200];
 
 	glColor4f(1.0, 1.0, 1.0, 1.0);
@@ -198,17 +192,9 @@ static void draw2D() {
 		case RUN_CPU_SPH:
 			st = g_fluid_system.getParam(PTIME_INSERT) + g_fluid_system.getParam(PTIME_PRESS) + g_fluid_system.getParam(PTIME_FORCE) + g_fluid_system.getParam(PTIME_ADVANCE);
 			break;
-		case RUN_CUDA_INDEX_SPH:
-		case RUN_CUDA_FULL_SPH:
-			st = g_fluid_system.getParam(PTIME_INSERT) + g_fluid_system.getParam(PTIME_SORT) + g_fluid_system.getParam(PTIME_PRESS) + g_fluid_system.getParam(PTIME_FORCE) + g_fluid_system.getParam(PTIME_ADVANCE);
-			break;
-		case RUN_CPU_PCISPH:
-			st = g_fluid_system.getParam(PTIME_INSERT) + g_fluid_system.getParam(PTIME_OTHER_FORCE) + g_fluid_system.getParam(PTIME_PCI_STEP) + g_fluid_system.getParam(PTIME_ADVANCE);
-			break;
-		case RUN_CUDA_INDEX_PCISPH:
-		case RUN_CUDA_FULL_PCISPH:
-			st = g_fluid_system.getParam(PTIME_INSERT) + g_fluid_system.getParam(PTIME_SORT) + g_fluid_system.getParam(PTIME_OTHER_FORCE) + g_fluid_system.getParam(PTIME_PCI_STEP) + g_fluid_system.getParam(PTIME_ADVANCE);
-			break;
+		//case RUN_CPU_PBF:
+		//	st = g_fluid_system.getParam(PTIME_INSERT) + g_fluid_system.getParam(PTIME_OTHER_FORCE) + g_fluid_system.getParam(PTIME_PCI_STEP) + g_fluid_system.getParam(PTIME_ADVANCE);
+		//	break;
 		default:
 			st = g_fluid_system.getParam(PTIME_INSERT) + g_fluid_system.getParam(PTIME_PRESS) + g_fluid_system.getParam(PTIME_FORCE) + g_fluid_system.getParam(PTIME_ADVANCE);
 			break;
@@ -344,18 +330,18 @@ static void keyboard_func(unsigned char key, int x, int y) {
 	case 'b':
 		// 切换加载3D模型数据/手动设置场景
 		g_fluid_system.setToggle(PUSELOADEDSCENE);
-		g_fluid_system.setup(false);
+		g_fluid_system.setUp(false);
 		break;
 	case 'f':
 	case 'F':
 		g_fluid_system.IncParam(PRUN_MODE, -1, 0, 5);
-		g_fluid_system.setup(false);
+		g_fluid_system.setUp(false);
 		break;
 		// 下一种模拟方法
 	case 'g':
 	case 'G':
 		g_fluid_system.IncParam(PRUN_MODE, 1, 0, 5);
-		g_fluid_system.setup(false);
+		g_fluid_system.setUp(false);
 		break;
 		// 显示/隐藏均匀网格边界
 	case '1':
@@ -415,13 +401,13 @@ static void keyboard_func(unsigned char key, int x, int y) {
 		// 上一个场景
 	case '[':
 		g_fluid_system.IncParam(PEXAMPLE, -1, 0, 3);
-		g_fluid_system.setup(true);
+		g_fluid_system.setUp(true);
 		UpdateEmit();
 		break;
 		// 下一个场景
 	case ']':
 		g_fluid_system.IncParam(PEXAMPLE, +1, 0, 3);
-		g_fluid_system.setup(true);
+		g_fluid_system.setUp(true);
 		UpdateEmit();
 		break;
 	case 27:
@@ -587,7 +573,7 @@ static void glInit() {
 	g_obj_angles.x = 118.7;	g_obj_angles.y = 200;	g_obj_angles.z = 1.0;
 	g_obj_dang.x = 1;	g_obj_dang.y = 1;		g_obj_dang.z = 0;
 
-	g_fluid_system.setup(true);
+	g_fluid_system.setUp(true);
 	g_fluid_system.setVec(PEMIT_ANG, Vector3DF(g_obj_angles.x, g_obj_angles.y, g_obj_angles.z));
 	g_fluid_system.setVec(PEMIT_POS, Vector3DF(g_obj_from.x, g_obj_from.y, g_obj_from.z));
 
