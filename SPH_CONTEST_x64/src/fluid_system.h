@@ -40,7 +40,7 @@ misrepresented as being the original software.
 
 
 // 宏定义
-#define MAX_PARAM				60
+#define MAX_PARAM				60         // 参数个数
 #define GRID_UCHAR				0xFF
 #define UNDEFINE				0xFFFFFFFF // 设定0xFFFFFFFF为未定义值
 
@@ -98,7 +98,6 @@ misrepresented as being the original software.
 #define	PDENSITYERRORFACTOR		50
 #define PMINLOOPPCISPH			51  // PCI最小循环次数
 #define PMAXLOOPPCISPH			52  // PCI最大循环次数
-#define PMAXDENSITYERRORALLOWED 53  // 允许的最大密度误差
 #define PKERNELSELF				54
 #define PINITIALIZEDENSITY		55
 
@@ -136,28 +135,25 @@ misrepresented as being the original software.
 #define PUSELOADEDSCENE			18
 
 // 全局变量
-const int grid_adj_cnt_ = 27;
+const int grid_adj_cnt = 27;
 
 
-// 在需要高频率（如渲染循环中）访问数据的时候，一般情况下SOA的效率高于AOS，
-// 因为将需要频繁访问的数据连续存放会大大提高访问速度。
-// 虽然AOS的结构可能更适合面向对象设计，但是在高度依赖效率的地方应该使用SOA。
-// 
-// 使用SOA 代替 AOS 结构体Particle只是用来计算粒子所占用内存大小的辅助数据结构
+// 粒子数据结构
 struct Particle
 {
-	// offset - TOTAL: 120 (must be multiple of 12 = sizeof(Vector3DF) )
-	Vector3DF pos;                                  // 0
-	Vector3DF vel;                                  // 12
-	Vector3DF vel_eval;                             // 24
-	Vector3DF force;                                // 36
-	float     pressure;	                            // 48
-	float     density;                              // 56
-	int	      particle_grid_cell_index;             // 60
-	int       next_particle_index_in_the_same_cell;	// 64 填充字节 成员对齐，参见：《高质量程序设计指南C / C++语言》（第三版）P147， 8.1.4 成员对齐
-	DWORD	  clr;
+	Vector3DF pos;                                  // 位置
+	Vector3DF vel;                                  // 瞬时速度
+	Vector3DF vel_eval;                             // 平均速度
+	Vector3DF force;                                // 受力
+	float     pressure;	                            // 压力(无方向)
+	float     density;                              // 密度
+	float     mass;                                 // 质量
+	int	      particle_grid_cell_index;             // 所在网格的索引
+	int       next_particle_index_in_the_same_cell;	// 同一个网格中下一个粒子的索引
+	DWORD	  clr;									// 用于渲染
 };
 
+// 网格数据结构
 struct Cell
 {
 	uint first_particle_index;   // 每个cell中第一个粒子的索引
@@ -170,6 +166,10 @@ struct Cell
 // 函数命名规范:
 // set和get函数开头第一个字母小写，函数名中每个单词开头字母大写
 //     其余函数开头第一个字母大写，函数名中每个单词开头字母大写
+//
+// 变量命名规则:
+// 全局类变量每个单词用_分割，所有单词小写
+// 函数内局部变量每个单词开头字母大写
 class ParticleSystem
 {
 
@@ -208,14 +208,14 @@ public:
 	void        Draw(Camera3D& cam, float rad);
 
 private:
-	static int const lutSize = 100000;
+	static int const lut_size = 100000;
 
-	float lutKernelM4[lutSize];
-	float lutKernelPressureGrad[lutSize];
+	float lut_kernel_m4_[lut_size];
+	float lut_kernel_pressure_grad_[lut_size];
 
-	std::string	scene_name_;
+	std::string	scene_name;
 	int	        texture_[1];
-	int	        sphere_points_;
+	int	        sphere_points;
 
 	// 模拟参数
 	float     param_[MAX_PARAM];
@@ -225,39 +225,34 @@ private:
 	// XML 设置文件
 	XmlSettings	xml;
 
-	std::ofstream outfileParticles;
-	std::ifstream infileParticles;
-
 	// 绘制函数相关变量
 	int	   vbo_[3];
-	Image  image_;
+	Image  image;
 
 	// SPH光滑核函数系数
-	float poly6_kern_;
-	float lap_kern_;
-	float spiky_kern_;
+	float poly6_kern;
+	float lap_kern;
+	float spiky_kern;
 
 	// 时间步长
 	float time_;
-	float time_step_;
-	float time_step_sph_;
-	float time_step_wcsph_;
-	float time_step_pcisph_;
-	int	  frame_;
+	float time_step;
+	float time_step_sph;
+	int	  frame;
 
 	// 粒子相关属性
 	std::vector<Particle> points;
-	int	                  num_points_;
+	int	                  points_number;
 
 	// 加速数据结构---网格相关变量
 	std::vector<Cell>	grid;
-	int					grid_total_;                           // grid中cell的数量
-	Vector3DI			grid_res_;                             // x，y，z方向上各有多少个cell
-	Vector3DF			grid_min_;
-	Vector3DF			grid_max_;
-	Vector3DF			grid_size_;
-	Vector3DF			grid_delta_;
-	int					grid_neighbor_cell_index_offset_[grid_adj_cnt_];
+	int					grid_total;                           // grid中cell的数量
+	Vector3DI			grid_res;                             // x，y，z方向上各有多少个cell
+	Vector3DF			grid_min;
+	Vector3DF			grid_max;
+	Vector3DF			grid_size;
+	Vector3DF			grid_delta;
+	int					grid_neighbor_cell_index_offset_[grid_adj_cnt];
 	int					grid_nonempty_cell_number;              // grid中有粒子的cell的数量
 	int					grid_particle_number;					// grid中粒子的数量
 
@@ -288,7 +283,7 @@ private:
 	float KernelPressureGrad(float dist, float sr);
 	float KernelPressureGradLut(float dist, float sr);
 
-	void ComputeGasConstAndTimeStep(float densityVariation);
+	void ComputeGasConstAndTimeStep();
 
 	// 边界碰撞函数
 	Vector3DF BoxBoundaryForce(const uint i);
@@ -326,19 +321,19 @@ inline bool ParticleSystem::getToggle(int p) {
 }
 
 inline int ParticleSystem::getNumPoints() {
-	return this->num_points_;
+	return this->points_number;
 }
 
 inline Vector3DF ParticleSystem::getGridRes() {
-	return this->grid_res_;
+	return this->grid_res;
 }
 
 inline int ParticleSystem::getGridTotal() {
-	return this->grid_total_;
+	return this->grid_total;
 }
 
 inline int ParticleSystem::getGridAdjCnt() {
-	return grid_adj_cnt_;
+	return grid_adj_cnt;
 }
 
 inline float ParticleSystem::getParam(int p) {
@@ -350,7 +345,7 @@ inline Vector3DF ParticleSystem::getVec(int p) {
 }
 
 inline float ParticleSystem::getDT() {
-	return this->time_step_;
+	return this->time_step;
 }
 
 inline void ParticleSystem::setToggle(int p) {

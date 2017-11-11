@@ -24,8 +24,8 @@ misrepresented as being the original software.
 #include "fluid_system.h"
 
 ParticleSystem::ParticleSystem() {
-	frame_ = 0;
-	time_step_ = 0.003;
+	frame = 0;
+	time_step = 0.003;
 	time_ = 0;
 
 	// 程序运行方法---6种方法可选
@@ -34,13 +34,13 @@ ParticleSystem::ParticleSystem() {
 	// 是否加载3D模型数据
 	toggle_[PUSELOADEDSCENE] = false;
 
-	num_points_ = 0;
+	points_number = 0;
 
 	param_[PEXAMPLE] = 0;
 
 	points.clear();
 
-	grid_total_ = 0;
+	grid_total = 0;
 
 	if (!xml.Load("scene.xml")) {
 		printf("ERROR: Problem loading scene.xml. Check formatting.\n");
@@ -55,7 +55,7 @@ ParticleSystem::~ParticleSystem() {
 
 // 程序运行入口, 内存分配
 void ParticleSystem::setUp(bool bStart) {
-	frame_ = 0;
+	frame = 0;
 	time_ = 0;
 
 	setDefaultParams();
@@ -68,7 +68,7 @@ void ParticleSystem::setUp(bool bStart) {
 
 	setSpacing();
 
-	ComputeGasConstAndTimeStep(param_[PMAXDENSITYERRORALLOWED]);
+	ComputeGasConstAndTimeStep();
 
 	float lengthX = vec_[PINITPARTICLEMAX].x - vec_[PINITPARTICLEMIN].x;
 	float lengthY = vec_[PINITPARTICLEMAX].y - vec_[PINITPARTICLEMIN].y;
@@ -91,13 +91,13 @@ void ParticleSystem::setUp(bool bStart) {
 
 		Vector3DF minVec;
 		Vector3DF maxVec;
-		num_points_ = ReadInFluidParticles(file_name, minVec, maxVec);
+		points_number = ReadInFluidParticles(file_name, minVec, maxVec);
 		
 		setInitParticleVolumeFromFile(minVec, maxVec);
 		setInitParticleVolume(numParticlesXYZ, lengthXYZ, 0.1);
 	}
 	else {
-		num_points_ = 0;
+		points_number = 0;
 		setInitParticleVolume(numParticlesXYZ, lengthXYZ, 0.1);
 	}
 
@@ -128,7 +128,7 @@ void ParticleSystem::setRender() {
 	Vector3DF* buf = (Vector3DF*)malloc(sizeof(Vector3DF) * (udiv + 2)*(vdiv + 2) * 2);
 	Vector3DF* dat = buf;
 
-	sphere_points_ = 0;
+	sphere_points = 0;
 	for (float tilt = -90; tilt <= 90.0; tilt += du) {
 		for (float ang = 0; ang <= 360; ang += dv) {
 			float x = sin(ang*DEGtoRAD) * cos(tilt*DEGtoRAD);
@@ -146,23 +146,23 @@ void ParticleSystem::setRender() {
 			dat->y = y1*r;
 			dat->z = z1*r;
 			dat++;
-			sphere_points_ += 2;
+			sphere_points += 2;
 		}
 	}
 	glBindBuffer(GL_ARRAY_BUFFER, vbo_[2]);
-	glBufferData(GL_ARRAY_BUFFER, sphere_points_ * sizeof(Vector3DF), buf, GL_STATIC_DRAW);
+	glBufferData(GL_ARRAY_BUFFER, sphere_points * sizeof(Vector3DF), buf, GL_STATIC_DRAW);
 	glVertexPointer(3, GL_FLOAT, 0, 0x0);
 
 	free(buf);
 
-	image_.read("ball32.bmp", "ball32a.bmp");
+	image.read("ball32.bmp", "ball32a.bmp");
 }
 
 int ParticleSystem::SelectParticle(int x, int y, int wx, int wy, Camera3D& cam) {
 
 	Vector4DF pnt;
 
-	for (int n = 0; n < num_points_; n++) {
+	for (int n = 0; n < points_number; n++) {
 		pnt = cam.project(points[n].pos);
 		pnt.x = (pnt.x + 1.0)*0.5 * wx;
 		pnt.y = (pnt.y + 1.0)*0.5 * wy;
@@ -211,8 +211,8 @@ void ParticleSystem::Run() {
 		break;
 	}
 
-	time_ += time_step_;
-	frame_++;
+	time_ += time_step;
+	frame++;
 }
 
 void ParticleSystem::RunCPUSPH() {
@@ -270,16 +270,16 @@ void ParticleSystem::RunCPUPBF() {
 void ParticleSystem::InsertParticlesCPU() {
 
 	grid.clear();
-	grid.resize(grid_total_, Cell());
+	grid.resize(grid_total, Cell());
 
-	const int xns = grid_res_.x;
-	const int yns = grid_res_.y;
-	const int zns = grid_res_.z;
+	const int xns = grid_res.x;
+	const int yns = grid_res.y;
+	const int zns = grid_res.z;
 
 	grid_nonempty_cell_number = 0;
 	grid_particle_number = 0;
 
-	for (int idx = 0; idx < num_points_; ++idx) {
+	for (int idx = 0; idx < points_number; ++idx) {
 		Vector3DI gridCell;
 		const int gridCellIndex = getGridCell(points[idx].pos, gridCell);
 
@@ -315,7 +315,7 @@ void ParticleSystem::ComputePressureGrid() {
 
 	float minDens = 10e10;
 	float maxDens = 0.0;
-	for (int i = 0; i < num_points_; ++i) {
+	for (int i = 0; i < points_number; ++i) {
 
 		points[i].density = own_density_contribution;
 
@@ -325,9 +325,9 @@ void ParticleSystem::ComputePressureGrid() {
 
 		const uint i_cell_index = points[i].particle_grid_cell_index;
 		if (i_cell_index != UNDEFINE) {
-			for (int cell = 0; cell < grid_adj_cnt_; cell++) {
+			for (int cell = 0; cell < grid_adj_cnt; cell++) {
 				const int neighbor_cell_index = i_cell_index + grid_neighbor_cell_index_offset_[cell];
-				if (neighbor_cell_index == UNDEFINE || neighbor_cell_index < 0 || neighbor_cell_index > grid_total_ - 1) {
+				if (neighbor_cell_index == UNDEFINE || neighbor_cell_index < 0 || neighbor_cell_index > grid_total - 1) {
 					continue;
 				}
 
@@ -378,9 +378,9 @@ void ParticleSystem::ComputeForceGrid() {
 	const float smooth_radius_square = smooth_radius * smooth_radius;
 	const float visc = param_[PVISC];
 	Vector3DF   vec_gravity = vec_[PPLANE_GRAV_DIR];
-	const float vterm = lap_kern_ * visc;
+	const float vterm = lap_kern * visc;
 
-	for (int i = 0; i < this->num_points_; i++) {
+	for (int i = 0; i < this->points_number; i++) {
 		points[i].force.Set(0, 0, 0);
 		Vector3DF force(0, 0, 0);
 		const uint i_cell_index = points[i].particle_grid_cell_index;
@@ -390,9 +390,9 @@ void ParticleSystem::ComputeForceGrid() {
 		float	  idensity = points[i].density;
 
 		if (i_cell_index != UNDEFINE) {
-			for (int cell = 0; cell < grid_adj_cnt_; cell++) {
+			for (int cell = 0; cell < grid_adj_cnt; cell++) {
 				const int neighbor_cell_index = i_cell_index + grid_neighbor_cell_index_offset_[cell];
-				if (neighbor_cell_index == UNDEFINE || (neighbor_cell_index < 0 || neighbor_cell_index > grid_total_ - 1)) {
+				if (neighbor_cell_index == UNDEFINE || (neighbor_cell_index < 0 || neighbor_cell_index > grid_total - 1)) {
 					continue;
 				}
 
@@ -413,7 +413,7 @@ void ParticleSystem::ComputeForceGrid() {
 						const float jdist = sqrt(dist_square_sim_scale);
 						const float jpress = points[j].pressure;
 						const float h_minus_r = smooth_radius - jdist;
-						const float pterm = -0.5f * h_minus_r * spiky_kern_ * (ipress + jpress) / jdist;
+						const float pterm = -0.5f * h_minus_r * spiky_kern * (ipress + jpress) / jdist;
 						const float dterm = h_minus_r / (idensity * points[j].density);
 
 						Vector3DF vel_j_minus_i = points[j].vel_eval;
@@ -455,16 +455,16 @@ void ParticleSystem::AdvanceStepSimpleCollision() {
 	float speed;
 	float diff;
 
-	for (int i = 0; i < num_points_; i++) {
+	for (int i = 0; i < points_number; i++) {
 		if (points[i].particle_grid_cell_index == UNDEFINE)
 			continue;
 
 		Vector3DF acceleration = points[i].force;// + points[i].correction_pressure_force;
 		acceleration /= param_[PMASS];
 
-		points[i].vel_eval += acceleration * time_step_;
+		points[i].vel_eval += acceleration * time_step;
 		points[i].pos *= sim_scale;
-		points[i].pos += points[i].vel_eval * time_step_;
+		points[i].pos += points[i].vel_eval * time_step;
 
 		CollisionHandlingSimScale(points[i].pos, points[i].vel_eval);
 
@@ -491,15 +491,15 @@ int ParticleSystem::getGridCell(const Vector3DF& pos, Vector3DI& gc) {
 	gc.y = (int)(py / cellSize);
 	gc.z = (int)(pz / cellSize);
 
-	if (gc.x > grid_res_.x - 1)
-		gc.x = grid_res_.x - 1;
-	if (gc.y > grid_res_.y - 1)
-		gc.y = grid_res_.y - 1;
-	if (gc.z > grid_res_.z - 1)
-		gc.z = grid_res_.z - 1;
+	if (gc.x > grid_res.x - 1)
+		gc.x = grid_res.x - 1;
+	if (gc.y > grid_res.y - 1)
+		gc.y = grid_res.y - 1;
+	if (gc.z > grid_res.z - 1)
+		gc.z = grid_res.z - 1;
 
 	// 将3维的cell索引转化为1维的整数索引
-	return (int)(gc.y * grid_res_.x  * grid_res_.z + gc.z * grid_res_.x + gc.x); // x*y*z + x*y + x
+	return (int)(gc.y * grid_res.x  * grid_res.z + gc.z * grid_res.x + gc.x); // x*y*z + x*y + x
 }
 
 int ParticleSystem::getGridCell(int p, Vector3DI& gc){
@@ -509,11 +509,11 @@ int ParticleSystem::getGridCell(int p, Vector3DI& gc){
 Vector3DI ParticleSystem::getCell(int c) {
 
 	Vector3DI gc;
-	int xz = grid_res_.x*grid_res_.z;
+	int xz = grid_res.x*grid_res.z;
 	gc.y = c / xz;
 	c -= gc.y*xz;
-	gc.z = c / grid_res_.x;
-	c -= gc.z*grid_res_.x;
+	gc.z = c / grid_res.x;
+	c -= gc.z*grid_res.x;
 	gc.x = c;
 	return gc;
 }
@@ -542,12 +542,12 @@ float ParticleSystem::KernelM4(float dist, float sr) {
 
 float ParticleSystem::KernelM4Lut(float dist, float sr) {
 
-	int index = dist / sr * lutSize;
+	int index = dist / sr * lut_size;
 
-	if (index >= lutSize)
+	if (index >= lut_size)
 		return 0.0f;
 	else
-		return lutKernelM4[index];
+		return lut_kernel_m4_[index];
 }
 
 float ParticleSystem::KernelPressureGrad(float dist, float sr) {
@@ -563,44 +563,22 @@ float ParticleSystem::KernelPressureGrad(float dist, float sr) {
 
 float ParticleSystem::KernelPressureGradLut(float dist, float sr) {
 
-	int index = dist / sr * lutSize;
-	if (index >= lutSize) return 0.0f;
-	else return lutKernelPressureGrad[index];
+	int index = dist / sr * lut_size;
+	if (index >= lut_size) return 0.0f;
+	else return lut_kernel_pressure_grad_[index];
 }
 
-void ParticleSystem::ComputeGasConstAndTimeStep(float densityVariation) {
+void ParticleSystem::ComputeGasConstAndTimeStep() {
 
 	float maxParticleSpeed = 4.0f;
 	float courantFactor = 0.4f;
 
-	if (densityVariation >= 1.0) {
-		time_step_pcisph_ = 0.001;
+	param_[PGASCONSTANT] = 1000.0f;
+	float speedOfSound = sqrt(param_[PGASCONSTANT]);
+	float relevantSpeed = max(speedOfSound, maxParticleSpeed);
+	time_step_sph = courantFactor * param_[PSMOOTHRADIUS] / relevantSpeed;
 
-		param_[PGASCONSTANT] = 70000;
-		float speedOfSound = sqrt(param_[PGASCONSTANT]);
-		float relevantSpeed = max(speedOfSound, maxParticleSpeed);
-		time_step_wcsph_ = courantFactor * param_[PSMOOTHRADIUS] / relevantSpeed;
-
-		param_[PGASCONSTANT] = 1000.0f;
-		speedOfSound = sqrt(param_[PGASCONSTANT]);
-		relevantSpeed = max(speedOfSound, maxParticleSpeed);
-		time_step_sph_ = courantFactor * param_[PSMOOTHRADIUS] / relevantSpeed;
-	}
-	else {
-		time_step_pcisph_ = 0.0005;
-
-		param_[PGASCONSTANT] = 6000000;
-		float speedOfSound = sqrt(param_[PGASCONSTANT]);
-		float relevantSpeed = max(speedOfSound, maxParticleSpeed);
-		time_step_wcsph_ = courantFactor * param_[PSMOOTHRADIUS] / relevantSpeed;
-
-		param_[PGASCONSTANT] = 1000.0f;
-		speedOfSound = sqrt(param_[PGASCONSTANT]);
-		relevantSpeed = max(speedOfSound, maxParticleSpeed);
-		time_step_sph_ = courantFactor * param_[PSMOOTHRADIUS] / relevantSpeed;
-	}
-
-	time_step_ = time_step_sph_;
+	time_step = time_step_sph;
 
 }
 
@@ -728,7 +706,7 @@ void ParticleSystem::Draw(Camera3D& cam, float rad) {
 
 	glEnable(GL_LIGHTING);
 
-	for (int n = 0; n < this->num_points_; n++) {
+	for (int n = 0; n < this->points_number; n++) {
 		glPushMatrix();
 		glTranslatef(points[n].pos.x, points[n].pos.y, points[n].pos.z);
 		glScalef(rad, rad, rad);
@@ -743,34 +721,34 @@ void ParticleSystem::DrawGrid() {
 
 	Vector3DF gd(1, 1, 1);
 	Vector3DF gc;
-	gd /= grid_delta_;
+	gd /= grid_delta;
 
 	glBegin(GL_LINES);
-	for (int z = 0; z <= grid_res_.z; z++) {
-		for (int y = 0; y <= grid_res_.y; y++) {
+	for (int z = 0; z <= grid_res.z; z++) {
+		for (int y = 0; y <= grid_res.y; y++) {
 			gc.Set(1, y, z);
-			gc /= grid_delta_;
-			gc += grid_min_;
-			glVertex3f(grid_min_.x, gc.y, gc.z);
-			glVertex3f(grid_max_.x, gc.y, gc.z);
+			gc /= grid_delta;
+			gc += grid_min;
+			glVertex3f(grid_min.x, gc.y, gc.z);
+			glVertex3f(grid_max.x, gc.y, gc.z);
 		}
 	}
-	for (int z = 0; z <= grid_res_.z; z++) {
-		for (int x = 0; x <= grid_res_.x; x++) {
+	for (int z = 0; z <= grid_res.z; z++) {
+		for (int x = 0; x <= grid_res.x; x++) {
 			gc.Set(x, 1, z);
-			gc /= grid_delta_;
-			gc += grid_min_;
-			glVertex3f(gc.x, grid_min_.y, gc.z);
-			glVertex3f(gc.x, grid_max_.y, gc.z);
+			gc /= grid_delta;
+			gc += grid_min;
+			glVertex3f(gc.x, grid_min.y, gc.z);
+			glVertex3f(gc.x, grid_max.y, gc.z);
 		}
 	}
-	for (int y = 0; y <= grid_res_.y; y++) {
-		for (int x = 0; x <= grid_res_.x; x++) {
+	for (int y = 0; y <= grid_res.y; y++) {
+		for (int x = 0; x <= grid_res.x; x++) {
 			gc.Set(x, y, 1);
-			gc /= grid_delta_;
-			gc += grid_min_;
-			glVertex3f(gc.x, gc.y, grid_min_.z);
-			glVertex3f(gc.x, gc.y, grid_max_.z);
+			gc /= grid_delta;
+			gc += grid_min;
+			glVertex3f(gc.x, gc.y, grid_min.z);
+			glVertex3f(gc.x, gc.y, grid_max.z);
 		}
 	}
 	glEnd();
@@ -924,7 +902,7 @@ void ParticleSystem::DrawDomain(Vector3DF& domain_min, Vector3DF& domain_max) {
 
 void ParticleSystem::DrawText() {
 	char msg[100];
-	for (int n = 0; n < this->num_points_; n++) {
+	for (int n = 0; n < this->points_number; n++) {
 
 		sprintf(msg, "%d", n);
 		glColor4f((RED(points[n].clr) + 1.0)*0.5, (GRN(points[n].clr) + 1.0)*0.5, (BLUE(points[n].clr) + 1.0)*0.5, ALPH(points[n].clr));
@@ -960,7 +938,6 @@ void ParticleSystem::setDefaultParams() {
 	param_[PFORCE_FREQ] = 8.0;
 	param_[PMINLOOPPCISPH] = 3;
 	param_[PMAXLOOPPCISPH] = MAX_PCISPH_LOOPS;
-	param_[PMAXDENSITYERRORALLOWED] = 5.0;
 
 	vec_[PEMIT_POS].Set(0, 0, 0);
 	vec_[PEMIT_ANG].Set(0, 90, 1.0);
@@ -1048,15 +1025,15 @@ void ParticleSystem::setKernels() {
 		param_[PSPACINGREALWORLD] = pow((float)param_[PMASS] / (float)param_[PRESTDENSITY], 1 / 3.0f);
 	}
 	param_[PKERNELSELF] = KernelM4(0.0f, param_[PSMOOTHRADIUS]);
-	poly6_kern_ = 315.0f / (64.0f * MY_PI * pow(param_[PSMOOTHRADIUS], 9));
-	spiky_kern_ = -45.0f / (MY_PI * pow(param_[PSMOOTHRADIUS], 6));
-	lap_kern_ = 45.0f / (MY_PI * pow(param_[PSMOOTHRADIUS], 6));
+	poly6_kern = 315.0f / (64.0f * MY_PI * pow(param_[PSMOOTHRADIUS], 9));
+	spiky_kern = -45.0f / (MY_PI * pow(param_[PSMOOTHRADIUS], 6));
+	lap_kern = 45.0f / (MY_PI * pow(param_[PSMOOTHRADIUS], 6));
 
 	float sr = param_[PSMOOTHRADIUS];
-	for (int i = 0; i<lutSize; i++) {
-		float dist = sr * i / lutSize;
-		lutKernelM4[i] = KernelM4(dist, sr);
-		lutKernelPressureGrad[i] = KernelPressureGrad(dist, sr);
+	for (int i = 0; i<lut_size; i++) {
+		float dist = sr * i / lut_size;
+		lut_kernel_m4_[i] = KernelM4(dist, sr);
+		lut_kernel_pressure_grad_[i] = KernelPressureGrad(dist, sr);
 	}
 
 }
@@ -1088,7 +1065,7 @@ void ParticleSystem::setInitParticleVolumeFromFile(const Vector3DF& minVec, cons
 	const float lengthZ = maxVec.z - minVec.z;
 	const float inv_sim_scale = 1.0f / param_[PSIMSCALE];
 
-	for (int i = 0; i < num_points_; ++i) {
+	for (int i = 0; i < points_number; ++i) {
 		points[i].pos *= inv_sim_scale;
 		points[i].vel_eval.Set(0.0, 0.0, 0.0);
 		points[i].clr = COLORA((points[i].pos.x - minVec.x) / lengthX, (points[i].pos.y - minVec.y) / lengthY, (points[i].pos.z - minVec.z) / lengthZ, 1);
@@ -1111,7 +1088,7 @@ void ParticleSystem::setInitParticleVolume(const Vector3DI& numParticlesXYZ, con
 	if (numParticlesXYZ.z % 2 == 0) tmpZ = 0.0;
 	else                            tmpZ = 0.5;
 
-	int i = num_points_;
+	int i = points_number;
 	for (int iy = 0; iy < numParticlesXYZ.y; iy++) {
 
 		float y = 0.0 + (iy + tmpY) * param_[PSPACINGGRAPHICSWORLD];
@@ -1124,12 +1101,12 @@ void ParticleSystem::setInitParticleVolume(const Vector3DI& numParticlesXYZ, con
 
 				float z = vec_[PINITPARTICLEMIN].z + (iz + tmpZ) * param_[PSPACINGGRAPHICSWORLD];
 
-				if (num_points_ < param_[PMAXNUM]) {
+				if (points_number < param_[PMAXNUM]) {
 
 					points[i].pos.Set(x + (frand() - 0.5) * jitter, y + (frand() - 0.5) * jitter, z + (frand() - 0.5) * jitter);
 					points[i].vel_eval.Set(0.0, 0.0, 0.0);
 					points[i].clr = COLORA((x - vec_[PINITPARTICLEMIN].x) / lengthXYZ.x, (y - vec_[PINITPARTICLEMIN].y) / lengthXYZ.y, (z - vec_[PINITPARTICLEMIN].z) / lengthXYZ.z, 1);
-					num_points_++;
+					points_number++;
 				}
 				++i;
 			}
@@ -1141,50 +1118,41 @@ void ParticleSystem::setGridAllocate(const float border) {
 
 	float world_cellsize = param_[PGRIDSIZEREALSCALE] / param_[PSIMSCALE];
 
-	grid_min_ = vec_[PGRIDVOLUMEMIN];
-	grid_max_ = vec_[PGRIDVOLUMEMAX];
+	grid_min = vec_[PGRIDVOLUMEMIN];
+	grid_max = vec_[PGRIDVOLUMEMAX];
 
-	grid_size_ = vec_[PGRIDVOLUMEMAX] - vec_[PGRIDVOLUMEMIN];
-	grid_res_.x = (int)ceil(grid_size_.x / world_cellsize);
-	grid_res_.y = (int)ceil(grid_size_.y / world_cellsize);
-	grid_res_.z = (int)ceil(grid_size_.z / world_cellsize);
+	grid_size = vec_[PGRIDVOLUMEMAX] - vec_[PGRIDVOLUMEMIN];
+	grid_res.x = (int)ceil(grid_size.x / world_cellsize);
+	grid_res.y = (int)ceil(grid_size.y / world_cellsize);
+	grid_res.z = (int)ceil(grid_size.z / world_cellsize);
 
-	if (grid_res_.x == 0)
-		grid_res_.x = 1;
-	if (grid_res_.y == 0)
-		grid_res_.y = 1;
-	if (grid_res_.z == 0)
-		grid_res_.z = 1;
+	if (grid_res.x == 0)
+		grid_res.x = 1;
+	if (grid_res.y == 0)
+		grid_res.y = 1;
+	if (grid_res.z == 0)
+		grid_res.z = 1;
 
-	grid_total_ = (int)(grid_res_.x * grid_res_.y * grid_res_.z);
-	if (grid_total_ > 10000000) {
-		printf("ERROR: ParticleSystem::setGridAllocate(...): number: %d, too many cells in initGrid().\n", grid_total_);
+	grid_total = (int)(grid_res.x * grid_res.y * grid_res.z);
+	if (grid_total > 10000000) {
+		printf("ERROR: ParticleSystem::setGridAllocate(...): number: %d, too many cells in initGrid().\n", grid_total);
 	}
 
-	grid_size_.x = grid_res_.x * world_cellsize;
-	grid_size_.y = grid_res_.y * world_cellsize;
-	grid_size_.z = grid_res_.z * world_cellsize;
-	grid_delta_ = grid_res_;
-	grid_delta_ /= grid_size_;
+	grid_size.x = grid_res.x * world_cellsize;
+	grid_size.y = grid_res.y * world_cellsize;
+	grid_size.z = grid_res.z * world_cellsize;
+	grid_delta = grid_res;
+	grid_delta /= grid_size;
 
-	/*if (grid_head_cell_particle_index_array_ != 0x0)
-		free(grid_head_cell_particle_index_array_);
-	if (grid_particles_number_ != 0x0)
-		free(grid_particles_number_);
-	grid_head_cell_particle_index_array_ = (uint*)malloc(sizeof(uint*) * grid_total_);
-	grid_particles_number_ = (uint*)malloc(sizeof(uint*) * grid_total_);
-	memset(grid_head_cell_particle_index_array_, GRID_UNDEF, grid_total_ * sizeof(uint));
-	memset(grid_particles_number_, GRID_UNDEF, grid_total_ * sizeof(uint));*/
+	grid.reserve(grid_total + 1);
 
-	grid.reserve(grid_total_ + 1);
-
-	param_[PSTAT_GMEM] = 12 * grid_total_;
+	param_[PSTAT_GMEM] = 12 * grid_total;
 
 	int cell = 0;
 	for (int y = -1; y < 2; y++)
 		for (int z = -1; z < 2; z++)
 			for (int x = -1; x < 2; x++)
-				grid_neighbor_cell_index_offset_[cell++] = y * grid_res_.x *grid_res_.z + z * grid_res_.x + x;
+				grid_neighbor_cell_index_offset_[cell++] = y * grid_res.x *grid_res.z + z * grid_res.x + x;
 }
 
 // 分配内存
@@ -1200,8 +1168,8 @@ void ParticleSystem::ParseXML(std::string name, int id, bool bStart) {
 
 	xml.setBase(name, id);
 
-	xml.assignValueF(&time_step_, "DT");
-	xml.assignValueStr(scene_name_, "Name");
+	xml.assignValueF(&time_step, "DT");
+	xml.assignValueStr(scene_name, "Name");
 	if (bStart)	xml.assignValueF(&param_[PMAXNUM], "Num");
 	xml.assignValueF(&param_[PGRID_DENSITY], "GridDensity");
 	xml.assignValueF(&param_[PSIMSCALE], "SimScale");
@@ -1247,6 +1215,7 @@ int ParticleSystem::ReadInFluidParticles(const char * filename, Vector3DF & minV
 	float min_x, min_y, min_z;
 	float max_x, max_y, max_z;
 	int   cnt, readCnt = 0;
+	std::ifstream infileParticles;
 	try {
 		infileParticles.open(filename);
 
