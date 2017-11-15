@@ -969,11 +969,11 @@ void ParticleSystem::setExampleParams(bool bStart) {
 			vec_[PINITPARTICLEMIN].Set(-80, 0, -80);
 			vec_[PINITPARTICLEMAX].Set(80, 10, 80);
 		}
-		else {
-			vec_[PBOUNDARYMIN].Set(-30, 0, -50);
-			vec_[PBOUNDARYMAX].Set(30, 90, 0);
-			vec_[PINITPARTICLEMIN].Set(0, 0, -50);
-			vec_[PINITPARTICLEMAX].Set(30, 40, 0);
+		else { //   
+			vec_[PBOUNDARYMIN].Set(-60, 0, -100);
+			vec_[PBOUNDARYMAX].Set(60, 180, 0);
+			vec_[PINITPARTICLEMIN].Set(0, 0, -100);
+			vec_[PINITPARTICLEMAX].Set(60, 80, 0);
 		}
 		param_[PFORCE_MIN] = 0.0;
 		param_[PGROUND_SLOPE] = 0.0;
