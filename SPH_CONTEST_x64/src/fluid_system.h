@@ -94,7 +94,7 @@ misrepresented as being the original software.
 #define PTIME_FROMGPU			46	
 #define PFORCE_FREQ				47	// 受力频率
 #define PTIME_OTHER_FORCE		48
-#define PTIME_PCI_STEP			49
+#define PTIME_PBF_STEP			49
 #define	PDENSITYERRORFACTOR		50
 #define PMINLOOPPCISPH			51  // PCI最小循环次数
 #define PMAXLOOPPCISPH			52  // PCI最大循环次数
@@ -142,6 +142,7 @@ const int grid_adj_cnt = 27;
 struct Particle
 {
 	Vector3DF pos;                                  // 位置
+	Vector3DF deta_pos;                             // PBF中的位置修正量
 	Vector3DF vel;                                  // 瞬时速度
 	Vector3DF vel_eval;                             // 平均速度
 	Vector3DF force;                                // 受力
@@ -270,7 +271,7 @@ private:
 	void ComputeForceGrid();
 	void AdvanceStepSimpleCollision();
 	void ComputeDensity() {}
-	void PositionBasedFluid() {}
+	void PositionBasedFluid();
 
 	// 加速数据结构---网格相关函数
 	int       getGridCell(const Vector3DF& pos, Vector3DI& gc);

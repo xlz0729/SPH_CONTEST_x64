@@ -183,7 +183,7 @@ static void draw2D() {
 		sprintf(disp, "other force Time:    %.3f ms", g_fluid_system.getParam(PTIME_OTHER_FORCE));
 		drawText2D(20, 260, disp);
 
-		sprintf(disp, "PCI Step Time:       %.3f ms", g_fluid_system.getParam(PTIME_PCI_STEP));
+		sprintf(disp, "PBF Step Time:       %.3f ms", g_fluid_system.getParam(PTIME_PBF_STEP));
 		drawText2D(20, 280, disp);
 
 		float st = 0.0f;
@@ -192,9 +192,9 @@ static void draw2D() {
 		case RUN_CPU_SPH:
 			st = g_fluid_system.getParam(PTIME_INSERT) + g_fluid_system.getParam(PTIME_PRESS) + g_fluid_system.getParam(PTIME_FORCE) + g_fluid_system.getParam(PTIME_ADVANCE);
 			break;
-		//case RUN_CPU_PBF:
-		//	st = g_fluid_system.getParam(PTIME_INSERT) + g_fluid_system.getParam(PTIME_OTHER_FORCE) + g_fluid_system.getParam(PTIME_PCI_STEP) + g_fluid_system.getParam(PTIME_ADVANCE);
-		//	break;
+		case RUN_CPU_PBF:
+			st = g_fluid_system.getParam(PTIME_INSERT) + g_fluid_system.getParam(PTIME_PRESS) + g_fluid_system.getParam(PTIME_FORCE) + g_fluid_system.getParam(PTIME_ADVANCE);
+			break;
 		default:
 			st = g_fluid_system.getParam(PTIME_INSERT) + g_fluid_system.getParam(PTIME_PRESS) + g_fluid_system.getParam(PTIME_FORCE) + g_fluid_system.getParam(PTIME_ADVANCE);
 			break;
@@ -325,22 +325,22 @@ static void keyboard_func(unsigned char key, int x, int y) {
 	case ' ':
 		g_fluid_system.setToggle(PPAUSE);
 		break;
-		// 上一种模拟方法
+		// 切换加载3D模型数据/手动设置场景
 	case 'B':
 	case 'b':
-		// 切换加载3D模型数据/手动设置场景
 		g_fluid_system.setToggle(PUSELOADEDSCENE);
 		g_fluid_system.setUp(false);
 		break;
+		// 上一种模拟方法
 	case 'f':
 	case 'F':
-		g_fluid_system.IncParam(PRUN_MODE, -1, 0, 5);
+		g_fluid_system.IncParam(PRUN_MODE, -1, 0, 1);
 		g_fluid_system.setUp(false);
 		break;
 		// 下一种模拟方法
 	case 'g':
 	case 'G':
-		g_fluid_system.IncParam(PRUN_MODE, 1, 0, 5);
+		g_fluid_system.IncParam(PRUN_MODE, 1, 0, 1);
 		g_fluid_system.setUp(false);
 		break;
 		// 显示/隐藏均匀网格边界

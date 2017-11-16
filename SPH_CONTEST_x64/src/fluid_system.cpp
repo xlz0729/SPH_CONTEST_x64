@@ -199,7 +199,7 @@ void ParticleSystem::Run() {
 	param_[PTIME_FORCE] = 0.0;
 	param_[PTIME_ADVANCE] = 0.0;
 	param_[PTIME_OTHER_FORCE] = 0.0;
-	param_[PTIME_PCI_STEP] = 0.0;
+	param_[PTIME_PBF_STEP] = 0.0;
 
 	// 运行程序
 	switch ((int)param_[PRUN_MODE]) {
@@ -248,7 +248,7 @@ void ParticleSystem::RunCPUPBF() {
 	InsertParticlesCPU();
 	Record(PTIME_INSERT, "Insert CPU SPH", start);
 
-	// 计算压力
+	// 计算压力和密度
 	start.SetSystemTime(ACC_NSEC);
 	ComputePressureGrid();
 	Record(PTIME_PRESS, "Press CPU SPH", start);
@@ -258,13 +258,15 @@ void ParticleSystem::RunCPUPBF() {
 	ComputeForceGrid();
 	Record(PTIME_FORCE, "Force CPU SPH", start);
 
-	// PBF
-	PositionBasedFluid();
-
 	// 移动粒子
 	start.SetSystemTime(ACC_NSEC);
 	AdvanceStepSimpleCollision();
 	Record(PTIME_ADVANCE, "Advance CPU SPH", start);
+
+	// PBF
+	start.SetSystemTime(ACC_NSEC);
+	PositionBasedFluid();
+	Record(PTIME_PBF_STEP, "PBF Step Time", start);
 }
 
 void ParticleSystem::InsertParticlesCPU() {
@@ -470,6 +472,104 @@ void ParticleSystem::AdvanceStepSimpleCollision() {
 
 		points[i].pos /= sim_scale;
 	}
+}
+
+void ParticleSystem::PositionBasedFluid() {
+
+	const float mass = param_[PMASS];
+	const float sim_scale = param_[PSIMSCALE];
+	const float sim_scale_square = sim_scale * sim_scale;
+	const float smooth_radius = param_[PSMOOTHRADIUS];
+	const float smooth_radius_square = smooth_radius * smooth_radius;
+	const float visc = param_[PVISC];
+	const float denstity0 = param_[PRESTDENSITY];
+	Vector3DF   vec_gravity = vec_[PPLANE_GRAV_DIR];
+	const float vterm = lap_kern * visc;
+	const float eps = 1.0e-16;
+	float C = 0.0;
+	int m_iterations = 0;
+	float avg_density_devergence_err = 0;
+	float simscale5 = pow(sim_scale, 4);
+
+	while (((avg_density_devergence_err > 0.132) || (m_iterations < 2)) && (m_iterations < 50)) {
+		ComputeDensity();
+		avg_density_devergence_err = 0;
+		for (int i = 0; i < points_number; i++) {
+			/*force_[i].Set(0, 0, 0);
+			Vector3DF force(0, 0, 0);*/
+			const uint	i_cell_index = points[i].particle_grid_cell_index;
+			Vector3DF	ipos = points[i].pos;
+			Vector3DF	ivel_eval = points[i].vel_eval;
+			float		ipress = points[i].pressure;
+			float		idensity = points[i].density;
+
+			float		sumdeta2 = 0.0;
+			float		sumdevergencei = 0.0;
+			Vector3DF	sumdetai(0, 0, 0);
+			if (i_cell_index != UNDEFINE) {
+				for (int cell = 0; cell < grid_adj_cnt; cell++)
+				{
+					const int neighbor_cell_index = i_cell_index + grid_neighbor_cell_index_offset_[cell];
+
+					if (neighbor_cell_index == UNDEFINE || (neighbor_cell_index < 0 || neighbor_cell_index > grid_total - 1))
+					{
+						continue;
+					}
+
+					int j = grid[neighbor_cell_index].first_particle_index;
+					while (j != UNDEFINE) {
+						if (i == j)
+						{
+							j = points[j].next_particle_index_in_the_same_cell;
+							continue;
+						}
+
+						Vector3DF vector_i_minus_j = ipos - points[j].pos;//pi-pj
+						const float dx = vector_i_minus_j.x;
+						const float dy = vector_i_minus_j.y;
+						const float dz = vector_i_minus_j.z;
+
+						//const float dist_square_sim_scale = sim_scale_square*(dx*dx + dy*dy + dz*dz);
+						const float dist_square_sim_scale = (dx*dx + dy*dy + dz*dz);
+						//const float jdist = sqrt(dist_square_sim_scale);//pi-pj的模
+						if (dist_square_sim_scale *sim_scale_square <= smooth_radius_square && dist_square_sim_scale > 0) {
+							const float jdist = sqrt(dist_square_sim_scale);
+							const float h_minus_r = smooth_radius / sim_scale - jdist;//h-|pi-pj|
+							const float h_minus_r2 = h_minus_r*h_minus_r;//(h-|pi-pj|)2
+							Vector3DF pi_pjnorm = vector_i_minus_j * (1.0f / jdist);//pi-pj|pi-pj|
+							Vector3DF labataj = (pi_pjnorm * h_minus_r2)*lap_kern*simscale5*mass*(1 / denstity0);
+							const float ladx = labataj.x;
+							const float lady = labataj.y;
+							const float ladz = labataj.z;
+							const float lababta2_i = (ladx*ladx + lady*lady + ladz*ladz);
+
+							sumdeta2 += lababta2_i;
+
+							sumdetai += labataj;
+
+							/*const float devergence = h_minus_r2 * jdist * lap_kern_*simscale5 * mass;
+							sumdevergencei += devergence;*/
+
+
+						}
+						j = points[j].next_particle_index_in_the_same_cell;
+					}
+				}
+			}
+
+			C = (idensity) / denstity0 - 1;
+
+			float sumdetai2 = (sumdetai.x*sumdetai.x + sumdetai.y*sumdetai.y + sumdetai.z*sumdetai.z);
+			Vector3DF detaposi = sumdetai * ((-1)*C / (sumdeta2 + sumdetai2 + eps));
+			points[i].deta_pos.Set(detaposi.x, detaposi.y, detaposi.z);
+			Vector3DF ppp = points[i].pos;
+			points[i].pos = points[i].pos + points[i].deta_pos * 0.000001f;
+			avg_density_devergence_err += abs(C);
+		}
+		avg_density_devergence_err = avg_density_devergence_err / points_number;
+		m_iterations++;
+	}
+	//cout << m_iterations << endl;
 }
 
 // 得到当前pos所在的gridCell的编号
