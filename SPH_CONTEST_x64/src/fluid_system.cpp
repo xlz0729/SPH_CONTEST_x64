@@ -308,66 +308,41 @@ void ParticleSystem::InsertParticlesCPU() {
 
 void ParticleSystem::ComputePressureGrid() {
 
-	const float	sim_scale_square = param_[PSIMSCALE] * param_[PSIMSCALE];
-	const float smooth_radius = param_[PSMOOTHRADIUS];
-	const float smooth_radius_square = smooth_radius * smooth_radius;
-	const float mass = param_[PMASS];
+	const float	simScaleSquare = param_[PSIMSCALE] * param_[PSIMSCALE];
+	const float smoothRadiusSquare = param_[PSMOOTHRADIUS] * param_[PSMOOTHRADIUS];
 
-	const float own_density_contribution = param_[PKERNELSELF] * mass;
-
-	float minDens = 10e10;
-	float maxDens = 0.0;
 	for (int i = 0; i < points_number; ++i) {
 
-		points[i].density = own_density_contribution;
+		points[i].density = 0.0;
 
-		int neighbor_nums = 0;
-		int search_nums = 0;
 		float sum = 0.0;
 
-		const uint i_cell_index = points[i].particle_grid_cell_index;
-		if (i_cell_index != UNDEFINE) {
+		const uint iCellIndex = points[i].particle_grid_cell_index;
+		if (iCellIndex != UNDEFINE) {
 			for (int cell = 0; cell < grid_adj_cnt; cell++) {
-				const int neighbor_cell_index = i_cell_index + grid_neighbor_cell_index_offset_[cell];
-				if (neighbor_cell_index == UNDEFINE || neighbor_cell_index < 0 || neighbor_cell_index > grid_total - 1) {
+				const int neighborCellIndex = iCellIndex + grid_neighbor_cell_index_offset_[cell];
+				if (neighborCellIndex == UNDEFINE || neighborCellIndex < 0 || neighborCellIndex > grid_total - 1) {
 					continue;
 				}
 
-				int j = grid[neighbor_cell_index].first_particle_index;
+				int j = grid[neighborCellIndex].first_particle_index;
 				while (j != UNDEFINE) {
 					if (i == j) {
 						j = points[j].next_particle_index_in_the_same_cell;
 						continue;
 					}
-					Vector3DF dst_graphics_scale = points[i].pos;
-					dst_graphics_scale -= points[j].pos;
-					const float dist_square_sim_scale = sim_scale_square*(dst_graphics_scale.x*dst_graphics_scale.x + dst_graphics_scale.y*dst_graphics_scale.y + dst_graphics_scale.z*dst_graphics_scale.z);
-					if (dist_square_sim_scale <= smooth_radius_square) {
-						const float dist = sqrt(dist_square_sim_scale);
-						float kernelValue = KernelM4Lut(dist, smooth_radius);
-						points[i].density += kernelValue * mass;
-
-						neighbor_nums++;
+					Vector3DF ri = points[i].pos;
+					Vector3DF ri_rj = ri - points[j].pos;
+					const float ri_rjSquare = simScaleSquare*(ri_rj.x*ri_rj.x + ri_rj.y*ri_rj.y + ri_rj.z*ri_rj.z);
+					if (ri_rjSquare <= smoothRadiusSquare) {
+						points[i].density += pow(smoothRadiusSquare - ri_rjSquare, 3.0f);
 					}
-					search_nums++;
 					j = points[j].next_particle_index_in_the_same_cell;
 				}
 			}
 		}
-
-		if (points[i].density < minDens)
-			minDens = points[i].density;
-		if (points[i].density > maxDens)
-			maxDens = points[i].density;
-
+		points[i].density *= param_[PMASS] * poly6_kern;
 		points[i].pressure = max(0.0f, (points[i].density - param_[PRESTDENSITY]) * param_[PGASCONSTANT]);
-
-		param_[PSTAT_NEIGHCNT] = float(neighbor_nums);
-		param_[PSTAT_SEARCHCNT] = float(search_nums);
-		if (param_[PSTAT_NEIGHCNT] > param_[PSTAT_NEIGHCNTMAX])
-			param_[PSTAT_NEIGHCNTMAX] = param_[PSTAT_NEIGHCNT];
-		if (param_[PSTAT_SEARCHCNT] > param_[PSTAT_SEARCHCNTMAX])
-			param_[PSTAT_SEARCHCNTMAX] = param_[PSTAT_SEARCHCNT];
 	}
 }
 
@@ -495,8 +470,6 @@ void ParticleSystem::PositionBasedFluid() {
 		ComputeDensity();
 		avg_density_devergence_err = 0;
 		for (int i = 0; i < points_number; i++) {
-			/*force_[i].Set(0, 0, 0);
-			Vector3DF force(0, 0, 0);*/
 			const uint	i_cell_index = points[i].particle_grid_cell_index;
 			Vector3DF	ipos = points[i].pos;
 			Vector3DF	ivel_eval = points[i].vel_eval;
@@ -529,9 +502,7 @@ void ParticleSystem::PositionBasedFluid() {
 						const float dy = vector_i_minus_j.y;
 						const float dz = vector_i_minus_j.z;
 
-						//const float dist_square_sim_scale = sim_scale_square*(dx*dx + dy*dy + dz*dz);
 						const float dist_square_sim_scale = (dx*dx + dy*dy + dz*dz);
-						//const float jdist = sqrt(dist_square_sim_scale);//pi-pj的模
 						if (dist_square_sim_scale *sim_scale_square <= smooth_radius_square && dist_square_sim_scale > 0) {
 							const float jdist = sqrt(dist_square_sim_scale);
 							const float h_minus_r = smooth_radius / sim_scale - jdist;//h-|pi-pj|
@@ -546,10 +517,6 @@ void ParticleSystem::PositionBasedFluid() {
 							sumdeta2 += lababta2_i;
 
 							sumdetai += labataj;
-
-							/*const float devergence = h_minus_r2 * jdist * lap_kern_*simscale5 * mass;
-							sumdevergencei += devergence;*/
-
 
 						}
 						j = points[j].next_particle_index_in_the_same_cell;
@@ -569,7 +536,6 @@ void ParticleSystem::PositionBasedFluid() {
 		avg_density_devergence_err = avg_density_devergence_err / points_number;
 		m_iterations++;
 	}
-	//cout << m_iterations << endl;
 }
 
 // 得到当前pos所在的gridCell的编号
@@ -616,56 +582,6 @@ Vector3DI ParticleSystem::getCell(int c) {
 	c -= gc.z*grid_res.x;
 	gc.x = c;
 	return gc;
-}
-
-float ParticleSystem::KernelM4(float dist, float sr) {
-
-	float s = dist / sr;
-	float result;
-	float factor = 2.546479089470325472f / (sr * sr * sr);
-	if (dist < 0.0f || dist >= sr)
-		return 0.0f;
-	else
-	{
-		if (s < 0.5f)
-		{
-			result = 1.0f - 6.0 * s * s + 6.0f * s * s * s;
-		}
-		else
-		{
-			float tmp = 1.0f - s;
-			result = 2.0 * tmp * tmp * tmp;
-		}
-	}
-	return factor * result;
-}
-
-float ParticleSystem::KernelM4Lut(float dist, float sr) {
-
-	int index = dist / sr * lut_size;
-
-	if (index >= lut_size)
-		return 0.0f;
-	else
-		return lut_kernel_m4_[index];
-}
-
-float ParticleSystem::KernelPressureGrad(float dist, float sr) {
-
-	if (dist == 0)
-		return 0.0f;
-	if (dist > sr)
-		return 0.0f;
-
-	float kernelPressureConst = -45.f / ((float(MY_PI)*sr*sr*sr*sr*sr*sr));
-	return kernelPressureConst / dist * (sr - dist)*(sr - dist);
-}
-
-float ParticleSystem::KernelPressureGradLut(float dist, float sr) {
-
-	int index = dist / sr * lut_size;
-	if (index >= lut_size) return 0.0f;
-	else return lut_kernel_pressure_grad_[index];
 }
 
 void ParticleSystem::ComputeGasConstAndTimeStep() {
@@ -1016,8 +932,8 @@ void ParticleSystem::setDefaultParams() {
 	param_[PSIMSCALE] = 0.005;
 	param_[PGRID_DENSITY] = 1.0;
 	param_[PVISC] = 1.002; //4.0;			
-	param_[PRESTDENSITY] = 1000.0;
-	param_[PMASS] = 0.001953125;
+	param_[PRESTDENSITY] = 1051.0; //1000.0;
+	param_[PMASS] = 0.002052734; //0.001953125;
 	param_[PCOLLISIONRADIUS] = 0.00775438;
 	param_[PSPACINGREALWORLD] = 0.0125;
 	param_[PSMOOTHRADIUS] = 0.025025;
@@ -1033,8 +949,6 @@ void ParticleSystem::setDefaultParams() {
 	param_[PFORCE_MAX] = 0.0;
 	param_[PDRAWTEXT] = 0;
 	param_[PPOINT_GRAV_AMT] = 0.0;
-	param_[PSTAT_NEIGHCNTMAX] = 0;
-	param_[PSTAT_SEARCHCNTMAX] = 0;
 	param_[PFORCE_FREQ] = 8.0;
 	param_[PMINLOOPPCISPH] = 3;
 	param_[PMAXLOOPPCISPH] = MAX_PCISPH_LOOPS;
@@ -1124,18 +1038,9 @@ void ParticleSystem::setKernels() {
 	if (param_[PSPACINGREALWORLD] == 0) {
 		param_[PSPACINGREALWORLD] = pow((float)param_[PMASS] / (float)param_[PRESTDENSITY], 1 / 3.0f);
 	}
-	param_[PKERNELSELF] = KernelM4(0.0f, param_[PSMOOTHRADIUS]);
 	poly6_kern = 315.0f / (64.0f * MY_PI * pow(param_[PSMOOTHRADIUS], 9));
 	spiky_kern = -45.0f / (MY_PI * pow(param_[PSMOOTHRADIUS], 6));
 	lap_kern = 45.0f / (MY_PI * pow(param_[PSMOOTHRADIUS], 6));
-
-	float sr = param_[PSMOOTHRADIUS];
-	for (int i = 0; i<lut_size; i++) {
-		float dist = sr * i / lut_size;
-		lut_kernel_m4_[i] = KernelM4(dist, sr);
-		lut_kernel_pressure_grad_[i] = KernelPressureGrad(dist, sr);
-	}
-
 }
 
 void ParticleSystem::setSpacing() {

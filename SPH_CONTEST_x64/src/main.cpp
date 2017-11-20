@@ -217,25 +217,22 @@ static void draw2D() {
 		sprintf(disp, "Particle Radius (m):   %3.5f", g_fluid_system.getParam(PCOLLISIONRADIUS));
 		drawText2D(20, 420, disp);
 
-		sprintf(disp, "Particle Mass (kg):    %0.5f", g_fluid_system.getParam(PMASS));
+		sprintf(disp, "Rest Density (kg/m^3): %3.5f", g_fluid_system.getParam(PRESTDENSITY));
 		drawText2D(20, 440, disp);
 
-		sprintf(disp, "Rest Density (kg/m^3): %3.5f", g_fluid_system.getParam(PRESTDENSITY));
+		sprintf(disp, "Viscosity:             %3.5f", g_fluid_system.getParam(PVISC));
 		drawText2D(20, 460, disp);
 
-		sprintf(disp, "Viscosity:             %3.5f", g_fluid_system.getParam(PVISC));
+		sprintf(disp, "Boundary Stiffness:    %3.5f", g_fluid_system.getParam(PBOUNDARYSTIFF));
 		drawText2D(20, 480, disp);
 
-		sprintf(disp, "Boundary Stiffness:    %3.5f", g_fluid_system.getParam(PBOUNDARYSTIFF));
-		drawText2D(20, 500, disp);
-
 		sprintf(disp, "Boundary Dampening:    %4.5f", g_fluid_system.getParam(PBOUNDARYDAMP));
-		drawText2D(20, 520, disp);
+		drawText2D(20, 500, disp);
 
 		vol = g_fluid_system.getVec(PPLANE_GRAV_DIR);
 		
 		sprintf(disp, "Gravity:               (%3.2f, %3.2f, %3.2f)", vol.x, vol.y, vol.z);
-		drawText2D(20, 540, disp);
+		drawText2D(20, 520, disp);
 	}
 }
 

@@ -2,8 +2,8 @@
 	<DT>			0.003		</DT>
 	<SimScale>		0.005		</SimScale>
 	<Viscosity>	4.0	</Viscosity>
-	<RestDensity>	1000.0		</RestDensity>
-	<Mass>		0.001953125	</Mass>
+	<RestDensity>	1051.0		</RestDensity>
+	<Mass>		0.002052734	</Mass>
 	<Radius>		0.00775438		</Radius>
 	<IntStiff>		1000.0		</IntStiff>
 	<BoundStiff>	2.5	</BoundStiff>

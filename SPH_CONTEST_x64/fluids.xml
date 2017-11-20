@@ -1,9 +1,9 @@
 <Fluid>
 	<Attr name="SimScale">0.005</Attr>
 	<Attr name="Viscosity">0.35</Attr>
-	<Attr name="RestDensity">1000.0</Attr>
+	<Attr name="RestDensity">1051.0</Attr>
 	<Attr name="Spacing">0.01</Attr>
-	<Attr name="Mass">0.00020543</Attr>
+	<Attr name="Mass">0.002052734</Attr>
 	<Attr name="Radius">0.02</Attr>
 	<Attr name="SearchDist">0.0059</Attr>
 	<Attr name="InternalStiffness">1000.0</Attr>

@@ -61,7 +61,7 @@ misrepresented as being the original software.
 #define PCOLLISIONRADIUS		10  // 碰撞半径
 #define PSPACINGREALWORLD		11	// 真实世界的间隔
 #define PSMOOTHRADIUS			12  // 光滑半径
-#define PGASCONSTANT			13	// 气体含量
+#define PGASCONSTANT			13	// 理想气体状态方程中的常数K
 #define PBOUNDARYSTIFF			14	// 边界弹性
 #define PBOUNDARYDAMP			15	// 边界阻力
 #define PACCEL_LIMIT			16  // 加速度上限
@@ -76,10 +76,6 @@ misrepresented as being the original software.
 #define PDRAWTEXT				26	// 绘制内容
 #define PCLR_MODE				27
 #define PPOINT_GRAV_AMT			28	
-#define PSTAT_NEIGHCNT			31	
-#define PSTAT_NEIGHCNTMAX		32	// 领域内最大粒子数
-#define PSTAT_SEARCHCNT			33	
-#define PSTAT_SEARCHCNTMAX		34	// 搜索范围内最大粒子数
 #define PSTAT_PMEM				35	
 #define PSTAT_GMEM				36	
 #define PTIME_INSERT			37	
@@ -98,7 +94,6 @@ misrepresented as being the original software.
 #define	PDENSITYERRORFACTOR		50
 #define PMINLOOPPCISPH			51  // PCI最小循环次数
 #define PMAXLOOPPCISPH			52  // PCI最大循环次数
-#define PKERNELSELF				54
 #define PINITIALIZEDENSITY		55
 
 // 向量参数
@@ -209,11 +204,6 @@ public:
 	void        Draw(Camera3D& cam, float rad);
 
 private:
-	static int const lut_size = 100000;
-
-	float lut_kernel_m4_[lut_size];
-	float lut_kernel_pressure_grad_[lut_size];
-
 	std::string	scene_name;
 	int	        texture_[1];
 	int	        sphere_points;
@@ -277,12 +267,6 @@ private:
 	int       getGridCell(const Vector3DF& pos, Vector3DI& gc);
 	int       getGridCell(int p, Vector3DI& gc);
 	Vector3DI getCell(int c);
-
-	// 光滑核函数
-	float KernelM4(float dist, float sr);
-	float KernelM4Lut(float dist, float sr);
-	float KernelPressureGrad(float dist, float sr);
-	float KernelPressureGradLut(float dist, float sr);
 
 	void ComputeGasConstAndTimeStep();
 
