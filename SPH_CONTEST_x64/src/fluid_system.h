@@ -229,6 +229,7 @@ private:
 	float time_;
 	float time_step;
 	float time_step_sph;
+	float time_step_pbf;
 	int	  frame;
 
 	// 粒子相关属性
@@ -260,7 +261,7 @@ private:
 	void ComputePressureGrid();
 	void ComputeForceGrid();
 	void AdvanceStepSimpleCollision();
-	void ComputeDensity() {}
+	void ComputeDensity();
 	void PositionBasedFluid();
 
 	// 加速数据结构---网格相关函数

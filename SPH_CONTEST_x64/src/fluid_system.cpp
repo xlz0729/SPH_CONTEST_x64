@@ -25,7 +25,6 @@ misrepresented as being the original software.
 
 ParticleSystem::ParticleSystem() {
 	frame = 0;
-	time_step = 0.003;
 	time_ = 0;
 
 	// 程序运行方法---6种方法可选
@@ -348,27 +347,26 @@ void ParticleSystem::ComputePressureGrid() {
 
 void ParticleSystem::ComputeForceGrid() {
 
-	const float mass = param_[PMASS];
-	const float sim_scale = param_[PSIMSCALE];
-	const float sim_scale_square = sim_scale * sim_scale;
-	const float smooth_radius = param_[PSMOOTHRADIUS];
-	const float smooth_radius_square = smooth_radius * smooth_radius;
+	const float simScale = param_[PSIMSCALE];
+	const float simScaleSquare = simScale * simScale;
+	const float smoothRadius = param_[PSMOOTHRADIUS];
+	const float smoothRadiusSquare = smoothRadius * smoothRadius;
 	const float visc = param_[PVISC];
-	Vector3DF   vec_gravity = vec_[PPLANE_GRAV_DIR];
+	Vector3DF   gravity = vec_[PPLANE_GRAV_DIR];
 	const float vterm = lap_kern * visc;
 
-	for (int i = 0; i < this->points_number; i++) {
+	for (int i = 0; i < points_number; i++) {
 		points[i].force.Set(0, 0, 0);
 		Vector3DF force(0, 0, 0);
-		const uint i_cell_index = points[i].particle_grid_cell_index;
 		Vector3DF ipos = points[i].pos;
 		Vector3DF iveleval = points[i].vel_eval;
 		float	  ipress = points[i].pressure;
 		float	  idensity = points[i].density;
 
-		if (i_cell_index != UNDEFINE) {
+		const uint iCellIndex = points[i].particle_grid_cell_index;
+		if (iCellIndex != UNDEFINE) {
 			for (int cell = 0; cell < grid_adj_cnt; cell++) {
-				const int neighbor_cell_index = i_cell_index + grid_neighbor_cell_index_offset_[cell];
+				const int neighbor_cell_index = iCellIndex + grid_neighbor_cell_index_offset_[cell];
 				if (neighbor_cell_index == UNDEFINE || (neighbor_cell_index < 0 || neighbor_cell_index > grid_total - 1)) {
 					continue;
 				}
@@ -380,33 +378,30 @@ void ParticleSystem::ComputeForceGrid() {
 						continue;
 					}
 
-					Vector3DF vector_i_minus_j = ipos - points[j].pos;
-					const float dx = vector_i_minus_j.x;
-					const float dy = vector_i_minus_j.y;
-					const float dz = vector_i_minus_j.z;
-
-					const float dist_square_sim_scale = sim_scale_square*(dx*dx + dy*dy + dz*dz);
-					if (dist_square_sim_scale <= smooth_radius_square && dist_square_sim_scale > 0) {
-						const float jdist = sqrt(dist_square_sim_scale);
+					Vector3DF ri_rj = ipos - points[j].pos;
+					const float ri_rjSquare = simScaleSquare*(ri_rj.x*ri_rj.x + ri_rj.y*ri_rj.y + ri_rj.z*ri_rj.z);
+					if (ri_rjSquare <= smoothRadiusSquare) {
+						//
+						const float jdist = sqrt(ri_rjSquare);
 						const float jpress = points[j].pressure;
-						const float h_minus_r = smooth_radius - jdist;
-						const float pterm = -0.5f * h_minus_r * spiky_kern * (ipress + jpress) / jdist;
-						const float dterm = h_minus_r / (idensity * points[j].density);
+						const float h_r = smoothRadius - jdist;
+						const float pterm = -0.5f * h_r * spiky_kern * (ipress + jpress) / jdist;
+						const float dterm = h_r / (idensity * points[j].density);
 
-						Vector3DF vel_j_minus_i = points[j].vel_eval;
-						vel_j_minus_i -= iveleval;
+						Vector3DF uj_ui = points[j].vel_eval;
+						uj_ui -= iveleval;
 
-						force += vector_i_minus_j * sim_scale * pterm * dterm;
+						force += ri_rj * simScale * pterm * dterm;
 
-						force += vel_j_minus_i * vterm * dterm;
+						force += uj_ui * vterm * dterm;
 					}
 					j = points[j].next_particle_index_in_the_same_cell;
 				}
 			}
 		}
 
-		force *= mass * mass;
-		force += vec_gravity * mass;
+		force *= param_[PMASS] * param_[PMASS];
+		force += gravity * param_[PMASS];
 
 		if (addBoundaryForce) {
 			force += BoxBoundaryForce(i);
@@ -439,7 +434,8 @@ void ParticleSystem::AdvanceStepSimpleCollision() {
 		Vector3DF acceleration = points[i].force;// + points[i].correction_pressure_force;
 		acceleration /= param_[PMASS];
 
-		points[i].vel_eval += acceleration * time_step;
+		points[i].vel += acceleration * time_step;
+		points[i].vel_eval += acceleration * time_step * 0.5f;
 		points[i].pos *= sim_scale;
 		points[i].pos += points[i].vel_eval * time_step;
 
@@ -447,6 +443,75 @@ void ParticleSystem::AdvanceStepSimpleCollision() {
 
 		points[i].pos /= sim_scale;
 	}
+}
+
+void ParticleSystem::ComputeDensity() {
+
+	//++++++++++++++++++计算密度wangfei+++++++++++++++++++++++++++++
+	const float	sim_scale_square = param_[PSIMSCALE] * param_[PSIMSCALE];
+	const float smooth_radius = param_[PSMOOTHRADIUS];
+	const float smooth_radius_square = smooth_radius * smooth_radius;
+	const float mass = param_[PMASS];
+
+	const float own_density_contribution = 350;// param_[PKERNELSELF] * mass;//350
+											   //cout << "own_density_contribution=" << own_density_contribution;
+
+	for (int i = 0; i < points_number; i++)
+	{
+
+		points[i].density = own_density_contribution;
+
+		int neighbor_nums = 0;
+		int search_nums = 0;
+		float sum = 0.0;
+
+		const uint i_cell_index = points[i].particle_grid_cell_index;
+		if (i_cell_index != UNDEFINE)
+		{
+			for (int cell = 0; cell < grid_adj_cnt; cell++)
+			{
+				const int neighbor_cell_index = i_cell_index + grid_neighbor_cell_index_offset_[cell];
+
+				if (neighbor_cell_index == UNDEFINE || (neighbor_cell_index < 0 || neighbor_cell_index > grid_total - 1))
+				{
+					continue;
+				}
+
+				int j = grid[neighbor_cell_index].first_particle_index;
+
+				while (j != UNDEFINE)
+				{
+					if (i == j)
+					{
+						j = points[j].next_particle_index_in_the_same_cell;
+						continue;
+					}
+					Vector3DF dst_graphics_scale = points[j].pos;
+					dst_graphics_scale -= points[i].pos;
+					const float distances = dst_graphics_scale.x*dst_graphics_scale.x + dst_graphics_scale.y*dst_graphics_scale.y + dst_graphics_scale.z*dst_graphics_scale.z;
+					const float dist_square_sim_scale = sim_scale_square*distances;
+					/*cout << "distances="<<distances << endl;
+					cout << "dist_square_sim_scale=" << dist_square_sim_scale << endl;*/
+					if (dist_square_sim_scale <= smooth_radius_square)
+					{
+						const float dist = sqrt(dist_square_sim_scale);
+						//wangfeidensityi += (lap_kern_ / 3.0)*h_minus_r*h_minus_r*h_minus_r;
+						float kernelValue = (315.0f / 64*(MY_PI * pow(param_[PSMOOTHRADIUS], 9)))*
+						(smooth_radius * smooth_radius - dist_square_sim_scale)*
+						(smooth_radius * smooth_radius - dist_square_sim_scale)*
+						(smooth_radius * smooth_radius - dist_square_sim_scale);
+						points[i].density += kernelValue * mass;
+
+						neighbor_nums++;
+					}
+					search_nums++;
+					j = points[j].next_particle_index_in_the_same_cell;
+				}
+			}
+		}
+	}
+
+
 }
 
 void ParticleSystem::PositionBasedFluid() {
@@ -466,7 +531,7 @@ void ParticleSystem::PositionBasedFluid() {
 	float avg_density_devergence_err = 0;
 	float simscale5 = pow(sim_scale, 4);
 
-	while (((avg_density_devergence_err > 0.132) || (m_iterations < 2)) && (m_iterations < 50)) {
+	while (((avg_density_devergence_err > 0.132) || (m_iterations < 2)) && (m_iterations < 5)) {
 		ComputeDensity();
 		avg_density_devergence_err = 0;
 		for (int i = 0; i < points_number; i++) {
@@ -593,9 +658,12 @@ void ParticleSystem::ComputeGasConstAndTimeStep() {
 	float speedOfSound = sqrt(param_[PGASCONSTANT]);
 	float relevantSpeed = max(speedOfSound, maxParticleSpeed);
 	time_step_sph = courantFactor * param_[PSMOOTHRADIUS] / relevantSpeed;
+	time_step_pbf = 0.001;
 
-	time_step = time_step_sph;
-
+	if (param_[PRUN_MODE] == RUN_CPU_SPH)
+		time_step = time_step_sph;
+	else
+		time_step = time_step_pbf;
 }
 
 // 边界碰撞
@@ -985,9 +1053,9 @@ void ParticleSystem::setExampleParams(bool bStart) {
 		}
 		else { //   
 			vec_[PBOUNDARYMIN].Set(-60, 0, -100);
-			vec_[PBOUNDARYMAX].Set(60, 180, 0);
+			vec_[PBOUNDARYMAX].Set(60, 90, 0);
 			vec_[PINITPARTICLEMIN].Set(0, 0, -100);
-			vec_[PINITPARTICLEMAX].Set(60, 80, 0);
+			vec_[PINITPARTICLEMAX].Set(60, 60, 0);
 		}
 		param_[PFORCE_MIN] = 0.0;
 		param_[PGROUND_SLOPE] = 0.0;
@@ -1072,6 +1140,7 @@ void ParticleSystem::setInitParticleVolumeFromFile(const Vector3DF& minVec, cons
 
 	for (int i = 0; i < points_number; ++i) {
 		points[i].pos *= inv_sim_scale;
+		points[i].vel.Set(0.0, 0.0, 0.0);
 		points[i].vel_eval.Set(0.0, 0.0, 0.0);
 		points[i].clr = COLORA((points[i].pos.x - minVec.x) / lengthX, (points[i].pos.y - minVec.y) / lengthY, (points[i].pos.z - minVec.z) / lengthZ, 1);
 	}
@@ -1109,6 +1178,7 @@ void ParticleSystem::setInitParticleVolume(const Vector3DI& numParticlesXYZ, con
 				if (points_number < param_[PMAXNUM]) {
 
 					points[i].pos.Set(x + (frand() - 0.5) * jitter, y + (frand() - 0.5) * jitter, z + (frand() - 0.5) * jitter);
+					points[i].vel.Set(0.0, 0.0, 0.0);
 					points[i].vel_eval.Set(0.0, 0.0, 0.0);
 					points[i].clr = COLORA((x - vec_[PINITPARTICLEMIN].x) / lengthXYZ.x, (y - vec_[PINITPARTICLEMIN].y) / lengthXYZ.y, (z - vec_[PINITPARTICLEMIN].z) / lengthXYZ.z, 1);
 					points_number++;
