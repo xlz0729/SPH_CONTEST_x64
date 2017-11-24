@@ -71,7 +71,7 @@ misrepresented as being the original software.
 #define PFORCE_MIN				20	// 最小力
 #define PFORCE_MAX				21	// 最大力
 #define PMAX_FRAC				22	
-#define PDRAWMODE				23	// 绘制方式，已弃用
+#define PDRAWMODE				23	// 绘制方式
 #define PDRAWSIZE				24	
 #define PDRAWTEXT				26	// 绘制内容
 #define PCLR_MODE				27
@@ -128,6 +128,10 @@ misrepresented as being the original software.
 #define PDRAWDOMAIN				16
 #define	PDRAWGRIDBOUND			17
 #define PUSELOADEDSCENE			18
+
+// 粒子类型
+#define PLASMA		0
+#define HAEMOCYTES	1
 
 // 全局变量
 const int grid_adj_cnt = 27;

@@ -37,6 +37,8 @@ ParticleSystem::ParticleSystem() {
 
 	param_[PEXAMPLE] = 0;
 
+	param_[PDRAWMODE] = 0;
+
 	points.clear();
 
 	grid_total = 0;
@@ -299,7 +301,8 @@ void ParticleSystem::InsertParticlesCPU() {
 			Vector3DF ve = points[idx].vel_eval;
 			float pr = points[idx].pressure;
 			float dn = points[idx].density;
-			printf("WARNING: ParticleSystem::InsertParticlesCPU(): Out of Bounds: %d, Position<%f %f %f>, Velocity<%f %f %f>, Pressure:%f, Density:%f\n", idx, points[idx].pos.x, points[idx].pos.y, points[idx].pos.z, vel.x, vel.y, vel.z, pr, dn);
+			printf("WARNING: ParticleSystem::InsertParticlesCPU(): Out of Bounds: %d, Position<%f %f %f>, Velocity<%f %f %f>, Pressure:%f, Density:%f\t", idx, points[idx].pos.x, points[idx].pos.y, points[idx].pos.z, vel.x, vel.y, vel.z, pr, dn);
+			printf("Grid cell x: %d, y: %d, z: %d\n", gridCell.x, gridCell.y, gridCell.z);
 			points[idx].pos.x = -1; points[idx].pos.y = -1; points[idx].pos.z = -1;
 		}
 	}
@@ -332,15 +335,15 @@ void ParticleSystem::ComputePressureGrid() {
 					}
 					Vector3DF ri = points[i].pos;
 					Vector3DF ri_rj = ri - points[j].pos;
-					const float ri_rjSquare = simScaleSquare*(ri_rj.x*ri_rj.x + ri_rj.y*ri_rj.y + ri_rj.z*ri_rj.z);
+					const float ri_rjSquare = simScaleSquare * (ri_rj.x*ri_rj.x + ri_rj.y*ri_rj.y + ri_rj.z*ri_rj.z);
 					if (ri_rjSquare <= smoothRadiusSquare) {
-						points[i].density += pow(smoothRadiusSquare - ri_rjSquare, 3.0f);
+						points[i].density += points[j].mass * pow(smoothRadiusSquare - ri_rjSquare, 3.0f);
 					}
 					j = points[j].next_particle_index_in_the_same_cell;
 				}
 			}
 		}
-		points[i].density *= param_[PMASS] * poly6_kern;
+		points[i].density *= poly6_kern;
 		points[i].pressure = max(0.0f, (points[i].density - param_[PRESTDENSITY]) * param_[PGASCONSTANT]);
 	}
 }
@@ -354,6 +357,7 @@ void ParticleSystem::ComputeForceGrid() {
 	const float visc = param_[PVISC];
 	Vector3DF   gravity = vec_[PPLANE_GRAV_DIR];
 	const float vterm = lap_kern * visc;
+	const float eps = 1.0e-8;
 
 	for (int i = 0; i < points_number; i++) {
 		points[i].force.Set(0, 0, 0);
@@ -385,23 +389,27 @@ void ParticleSystem::ComputeForceGrid() {
 						const float jdist = sqrt(ri_rjSquare);
 						const float jpress = points[j].pressure;
 						const float h_r = smoothRadius - jdist;
-						const float pterm = -0.5f * h_r * spiky_kern * (ipress + jpress) / jdist;
+						const float pterm = -0.5f * h_r * spiky_kern * (ipress + jpress) / (jdist + eps);
 						const float dterm = h_r / (idensity * points[j].density);
+
+						if (points[920].pos.x > 59.9 && i == 920) {
+							printf("pterm : %f, dterm : %f, jdist : %f\n", pterm, dterm, jdist);
+						}
 
 						Vector3DF uj_ui = points[j].vel_eval;
 						uj_ui -= iveleval;
 
-						force += ri_rj * simScale * pterm * dterm;
+						force += ri_rj * simScale * pterm * dterm  * points[j].mass;
 
-						force += uj_ui * vterm * dterm;
+						force += uj_ui * vterm * dterm * points[j].mass;
 					}
 					j = points[j].next_particle_index_in_the_same_cell;
 				}
 			}
 		}
 
-		force *= param_[PMASS] * param_[PMASS];
-		force += gravity * param_[PMASS];
+		force *= points[i].mass;
+		force += gravity * points[i].mass;
 
 		if (addBoundaryForce) {
 			force += BoxBoundaryForce(i);
@@ -426,16 +434,14 @@ void ParticleSystem::AdvanceStepSimpleCollision() {
 	float adj;
 	float speed;
 	float diff;
-
 	for (int i = 0; i < points_number; i++) {
 		if (points[i].particle_grid_cell_index == UNDEFINE)
 			continue;
 
 		Vector3DF acceleration = points[i].force;// + points[i].correction_pressure_force;
-		acceleration /= param_[PMASS];
+		acceleration /= points[i].mass;
 
-		points[i].vel += acceleration * time_step;
-		points[i].vel_eval += acceleration * time_step * 0.5f;
+		points[i].vel_eval += acceleration * time_step;
 		points[i].pos *= sim_scale;
 		points[i].pos += points[i].vel_eval * time_step;
 
@@ -495,7 +501,7 @@ void ParticleSystem::PositionBasedFluid() {
 	const float smoothRadius = param_[PSMOOTHRADIUS];
 	const float smoothRadiusSquare = smoothRadius * smoothRadius;
 	const float denstity0 = param_[PRESTDENSITY];
-	const float eps = 1.0e-16;
+	const float eps = 1.0e-6;
 	float C = 0.0;
 	int m_iterations = 0;
 	float avg_density_devergence_err = 0;
@@ -1128,7 +1134,15 @@ void ParticleSystem::setInitParticleVolume(const Vector3DI& numParticlesXYZ, con
 					points[i].pos.Set(x + (frand() - 0.5) * jitter, y + (frand() - 0.5) * jitter, z + (frand() - 0.5) * jitter);
 					points[i].vel.Set(0.0, 0.0, 0.0);
 					points[i].vel_eval.Set(0.0, 0.0, 0.0);
-					points[i].clr = COLORA((x - vec_[PINITPARTICLEMIN].x) / lengthXYZ.x, (y - vec_[PINITPARTICLEMIN].y) / lengthXYZ.y, (z - vec_[PINITPARTICLEMIN].z) / lengthXYZ.z, 1);
+					if (rand() % 100 < 60) {
+						points[i].mass = 0.002001953;
+						points[i].clr = COLORA(0.45, 0.45, 0.45, 1);
+					}
+					else {
+						points[i].mass = 0.002128906;
+						points[i].clr = COLORA(0.98, 0.05, 0.05, 1);
+					}
+					
 					points_number++;
 				}
 				++i;

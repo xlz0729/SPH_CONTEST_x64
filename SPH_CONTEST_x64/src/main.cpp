@@ -61,7 +61,10 @@ static void drawScene(float* viewmat, bool bShade) {
 
 		glEnable(GL_LIGHTING);
 		glEnable(GL_LIGHT0);
-		glDisable(GL_COLOR_MATERIAL);
+		if (g_fluid_system.getParam(PDRAWMODE) == 0)
+			glDisable(GL_COLOR_MATERIAL);
+		else
+			glEnable(GL_COLOR_MATERIAL);
 
 		Vector4DF amb, diff, spec;
 		float shininess = 5.0;
@@ -82,10 +85,15 @@ static void drawScene(float* viewmat, bool bShade) {
 		glLightfv(GL_LIGHT0, GL_SPECULAR, (float*)&spec.x);
 
 		amb.Set(0, 0, 0, 1); diff.Set(.3, .3, .3, 1); spec.Set(.1, .1, .1, 1);
-		glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT, (float*)&amb.x);
-		glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, (float*)&diff.x);
-		glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, (float*)&spec.x);
-		glMaterialfv(GL_FRONT_AND_BACK, GL_SHININESS, (float*)&shininess);
+		if (g_fluid_system.getParam(PDRAWMODE) == 0) {
+			glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT, (float*)&amb.x);
+			glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, (float*)&diff.x);
+			glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, (float*)&spec.x);
+			glMaterialfv(GL_FRONT_AND_BACK, GL_SHININESS, (float*)&shininess);
+		}
+		else {
+			glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE);
+		}
 
 		glLoadMatrixf(viewmat);
 
@@ -370,6 +378,15 @@ static void keyboard_func(unsigned char key, int x, int y) {
 	case 'L':
 		g_mode = MODE_LIGHTPOS;
 		break;
+		// 切换流体粒子显示模式
+	case 'j':
+	case 'J':
+	{
+		int d = g_fluid_system.getParam(PDRAWMODE) + 1;
+		if (d > 1) d = 0;
+		g_fluid_system.setParam(PDRAWMODE, d);
+	}
+	break;
 	// 移动相机/（视觉效果上等同于移动物体）
 	case 'a':
 	case 'A':
