@@ -84,24 +84,8 @@ void ParticleSystem::setUp(bool bStart) {
 
 	AllocateParticlesMemory(param_[PMAXNUM]);
 
-	// 从文件中加载粒子位置信息,并设置其速度，颜色等属性值
-	if (toggle_[PUSELOADEDSCENE] == true) {
-
-		// 从文件中读取bunny模型数据
-		const char* file_name = "models/bunny.txt";
-
-		Vector3DF minVec;
-		Vector3DF maxVec;
-		points_number = ReadInFluidParticles(file_name, minVec, maxVec);
-		
-		setInitParticleVolumeFromFile(minVec, maxVec);
-		setInitParticleVolume(numParticlesXYZ, lengthXYZ, 0.1);
-	}
-	else {
-		points_number = 0;
-		setInitParticleVolume(numParticlesXYZ, lengthXYZ, 0.1);
-	}
-
+	points_number = 0;
+	setInitParticleVolume(numParticlesXYZ, lengthXYZ, 0.1);
 	setGridAllocate(1.0);
 }
 
@@ -391,10 +375,6 @@ void ParticleSystem::ComputeForceGrid() {
 						const float h_r = smoothRadius - jdist;
 						const float pterm = -0.5f * h_r * spiky_kern * (ipress + jpress) / (jdist + eps);
 						const float dterm = h_r / (idensity * points[j].density);
-
-						if (points[920].pos.x > 59.9 && i == 920) {
-							printf("pterm : %f, dterm : %f, jdist : %f\n", pterm, dterm, jdist);
-						}
 
 						Vector3DF uj_ui = points[j].vel_eval;
 						uj_ui -= iveleval;
@@ -738,10 +718,6 @@ void ParticleSystem::Draw(Camera3D& cam, float rad) {
 		DrawDomain(vec_[PGRIDVOLUMEMIN], vec_[PGRIDVOLUMEMAX]);
 	}
 
-	if (param_[PDRAWTEXT] == 1.0) {
-		DrawText();
-	};
-
 	glEnable(GL_LIGHTING);
 
 	for (int n = 0; n < this->points_number; n++) {
@@ -938,22 +914,12 @@ void ParticleSystem::DrawDomain(Vector3DF& domain_min, Vector3DF& domain_max) {
 	glEnd();
 }
 
-void ParticleSystem::DrawText() {
-	char msg[100];
-	for (int n = 0; n < this->points_number; n++) {
-
-		sprintf(msg, "%d", n);
-		glColor4f((RED(points[n].clr) + 1.0)*0.5, (GRN(points[n].clr) + 1.0)*0.5, (BLUE(points[n].clr) + 1.0)*0.5, ALPH(points[n].clr));
-		drawText3D(points[n].pos.x, points[n].pos.y, points[n].pos.z, msg);
-	}
-}
-
 void ParticleSystem::setDefaultParams() {
 
-	param_[PMAXNUM] = 1048576;
+	param_[PMAXNUM] = 8388608;
 	param_[PSIMSCALE] = 0.005;
 	param_[PGRID_DENSITY] = 1.0;
-	param_[PVISC] = 1.002; //4.0;			
+	param_[PVISC] = 4.0;			
 	param_[PRESTDENSITY] = 1051.0; //1000.0;
 	param_[PMASS] = 0.002052734; //0.001953125;
 	param_[PCOLLISIONRADIUS] = 0.00775438;
@@ -1047,12 +1013,11 @@ void ParticleSystem::setExampleParams(bool bStart) {
 		}
 		param_[PFORCE_MIN] = 20.0;
 		param_[PFORCE_MAX] = 20.0;
-		vec_[PPLANE_GRAV_DIR].Set(0.0, -9.8, 0);
 		break;
 	}
 
 	// 从xml文件中加载场景
-	ParseXML("Scene", (int)param_[PEXAMPLE], bStart);
+	// ParseXML("Scene", (int)param_[PEXAMPLE], bStart);
 }
 
 void ParticleSystem::setKernels() {
@@ -1083,21 +1048,6 @@ void ParticleSystem::setSpacing() {
 
 	vec_[PGRIDVOLUMEMIN] = vec_[PBOUNDARYMIN] - (param_[PSMOOTHRADIUS] / param_[PSIMSCALE]);
 	vec_[PGRIDVOLUMEMAX] = vec_[PBOUNDARYMAX] + (param_[PSMOOTHRADIUS] / param_[PSIMSCALE]);
-}
-
-void ParticleSystem::setInitParticleVolumeFromFile(const Vector3DF& minVec, const Vector3DF& maxVec) {
-
-	const float lengthX = maxVec.x - minVec.x;
-	const float lengthY = maxVec.y - minVec.y;
-	const float lengthZ = maxVec.z - minVec.z;
-	const float inv_sim_scale = 1.0f / param_[PSIMSCALE];
-
-	for (int i = 0; i < points_number; ++i) {
-		points[i].pos *= inv_sim_scale;
-		points[i].vel.Set(0.0, 0.0, 0.0);
-		points[i].vel_eval.Set(0.0, 0.0, 0.0);
-		points[i].clr = COLORA((points[i].pos.x - minVec.x) / lengthX, (points[i].pos.y - minVec.y) / lengthY, (points[i].pos.z - minVec.z) / lengthZ, 1);
-	}
 }
 
 void ParticleSystem::setInitParticleVolume(const Vector3DI& numParticlesXYZ, const Vector3DF& lengthXYZ, const float jitter) {
@@ -1201,42 +1151,6 @@ void ParticleSystem::AllocateParticlesMemory(int cnt) {
 	param_[PSTAT_PMEM] = sizeof(Particle) * cnt;
 }
 
-void ParticleSystem::ParseXML(std::string name, int id, bool bStart) {
-
-	xml.setBase(name, id);
-
-	xml.assignValueF(&time_step, "DT");
-	xml.assignValueStr(scene_name, "Name");
-	if (bStart)	xml.assignValueF(&param_[PMAXNUM], "Num");
-	xml.assignValueF(&param_[PGRID_DENSITY], "GridDensity");
-	xml.assignValueF(&param_[PSIMSCALE], "SimScale");
-	xml.assignValueF(&param_[PVISC], "Viscosity");
-	xml.assignValueF(&param_[PRESTDENSITY], "RestDensity");
-	xml.assignValueF(&param_[PSPACINGGRAPHICSWORLD], "SpacingGraphicsWorld");
-	xml.assignValueF(&param_[PMASS], "Mass");
-	xml.assignValueF(&param_[PCOLLISIONRADIUS], "Radius");
-	xml.assignValueF(&param_[PSPACINGREALWORLD], "SearchDist");
-	xml.assignValueF(&param_[PGASCONSTANT], "IntStiff");
-	xml.assignValueF(&param_[PBOUNDARYSTIFF], "BoundStiff");
-	xml.assignValueF(&param_[PBOUNDARYDAMP], "BoundDamp");
-	xml.assignValueF(&param_[PACCEL_LIMIT], "AccelLimit");
-	xml.assignValueF(&param_[PVEL_LIMIT], "VelLimit");
-	xml.assignValueF(&param_[PPOINT_GRAV_AMT], "PointGravAmt");
-	xml.assignValueF(&param_[PGROUND_SLOPE], "GroundSlope");
-	xml.assignValueF(&param_[PFORCE_MIN], "WaveForceMin");
-	xml.assignValueF(&param_[PFORCE_MAX], "WaveForceMax");
-	xml.assignValueF(&param_[PFORCE_FREQ], "WaveForceFreq");
-	xml.assignValueF(&param_[PDRAWTEXT], "drawText2D");
-
-	xml.assignValueV3(&vec_[PBOUNDARYMIN], "BoundaryMin");
-	xml.assignValueV3(&vec_[PBOUNDARYMAX], "BoundaryMax");
-	xml.assignValueV3(&vec_[PINITPARTICLEMIN], "InitParticleVolumeMin");
-	xml.assignValueV3(&vec_[PINITPARTICLEMAX], "InitParticleVolumMax");
-	xml.assignValueV3(&vec_[PPOINT_GRAV_POS], "PointGravPos");
-	xml.assignValueV3(&vec_[PPLANE_GRAV_DIR], "PlaneGravDir");
-
-}
-
 void ParticleSystem::Record(int param, std::string name, mint::Time& start) {
 
 	mint::Time stop;
@@ -1244,38 +1158,4 @@ void ParticleSystem::Record(int param, std::string name, mint::Time& start) {
 	stop = stop - start;
 	param_[param] = stop.GetMSec();
 	if (toggle_[PPROFILE]) printf("%s:  %s\n", name.c_str(), stop.GetReadableTime().c_str());
-}
-
-int ParticleSystem::ReadInFluidParticles(const char * filename, Vector3DF & minVec, Vector3DF & maxVec) {
-
-	float px, py, pz;
-	float min_x, min_y, min_z;
-	float max_x, max_y, max_z;
-	int   cnt, readCnt = 0;
-	std::ifstream infileParticles;
-	try {
-		infileParticles.open(filename);
-
-		// 文件第一行为粒子数量
-		infileParticles >> cnt;
-
-		infileParticles >> min_x >> min_y >> min_z;
-		infileParticles >> max_x >> max_y >> max_z;
-
-		minVec.Set(min_x, min_y, min_z);
-		maxVec.Set(max_x, max_y, max_z);
-
-		while (infileParticles && readCnt < cnt) {
-
-			infileParticles >> px >> py >> pz;
-			points[readCnt].pos.Set(px, py, pz);
-			readCnt++;
-		}
-	}
-	catch (...) {
-		printf("ERROR: ParticleSystem::ReadInFluidParticles(...): File %s open failed.\n", filename);
-	}
-
-	infileParticles.close();
-	return cnt;
 }

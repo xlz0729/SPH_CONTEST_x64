@@ -50,7 +50,7 @@ misrepresented as being the original software.
 // 标量参数
 #define PRUN_MODE				0	
 #define PMAXNUM					1	// 最大粒子数量
-#define PEXAMPLE				2	
+#define PEXAMPLE				2	// 设置场景 0、1、2三种场景
 #define PSIMSIZE				3	  
 #define PSIMSCALE				4	// 缩放比例
 #define PGRID_DENSITY			5	// grid的密度
@@ -282,25 +282,17 @@ private:
 	// 绘制函数
 	void DrawGrid();
 	void DrawDomain(Vector3DF& domain_min, Vector3DF& domain_max);
-	void DrawText();
 
 	void setDefaultParams();
 	void setExampleParams(bool bStart);
 	void setKernels();
 	void setSpacing();
-	void setInitParticleVolumeFromFile(const Vector3DF& minVec, const Vector3DF& maxVec);
 	void setInitParticleVolume(const Vector3DI& numParticlesXYZ, const Vector3DF& lengthXYZ, const float jitter);
 	void setGridAllocate(const float border);
 
 	void AllocateParticlesMemory(int cnt);
 
-	// 读取XML文件
-	void ParseXML(std::string name, int id, bool bStart);
-
 	void Record(int param, std::string name, mint::Time& start);
-
-	// 从文件中读取粒子模型
-	int ReadInFluidParticles(const char* filename, Vector3DF& minVec, Vector3DF& maxVec);
 
 	inline float frand();
 };

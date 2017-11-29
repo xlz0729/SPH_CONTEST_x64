@@ -330,12 +330,6 @@ static void keyboard_func(unsigned char key, int x, int y) {
 	case ' ':
 		g_fluid_system.setToggle(PPAUSE);
 		break;
-		// 切换加载3D模型数据/手动设置场景
-	case 'B':
-	case 'b':
-		g_fluid_system.setToggle(PUSELOADEDSCENE);
-		g_fluid_system.setUp(false);
-		break;
 		// 上一种模拟方法
 	case 'f':
 	case 'F':
