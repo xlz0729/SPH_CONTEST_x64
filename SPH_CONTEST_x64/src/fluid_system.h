@@ -29,6 +29,7 @@ misrepresented as being the original software.
 #include <string>
 #include <vector>
 #include <fstream>
+#include <random>
 
 #include <time.h>
 
@@ -46,6 +47,7 @@ misrepresented as being the original software.
 
 #define RUN_CPU_SPH				0
 #define RUN_CPU_PBF				1
+#define RUN_CPU_XLZ				2
 
 // 标量参数
 #define PRUN_MODE				0	
@@ -127,7 +129,6 @@ misrepresented as being the original software.
 #define PPRINTDEBUGGINGINFO		15
 #define PDRAWDOMAIN				16
 #define	PDRAWGRIDBOUND			17
-#define PUSELOADEDSCENE			18
 
 // 粒子类型
 #define PLASMA		0
@@ -150,6 +151,7 @@ struct Particle
 	float     mass;                                 // 质量
 	int	      particle_grid_cell_index;             // 所在网格的索引
 	int       next_particle_index_in_the_same_cell;	// 同一个网格中下一个粒子的索引
+	int		  flag;									// 用于区分血细胞
 	DWORD	  clr;									// 用于渲染
 };
 
@@ -178,7 +180,7 @@ public:
 	~ParticleSystem();
 
 	// set函数
-	void         setUp(bool bStart);
+	void         setUp();
 	void         setRender();
 	inline void  setToggle(int p);
 	inline void  setParam(int p, int v);
@@ -198,11 +200,13 @@ public:
 	inline float     getParam(int p);
 	inline Vector3DF getVec(int p);
 	inline float     getDT();
+	inline int		 getFrame();
 
 	// 运行函数
 	void Run();
 	void RunCPUSPH();
 	void RunCPUPBF();
+	void RunCPUXLZ();
 
 	// 绘制函数
 	void        Draw(Camera3D& cam, float rad);
@@ -253,7 +257,6 @@ private:
 	int					grid_particle_number;					// grid中粒子的数量
 
 	// 边界碰撞相关变量
-	bool  addBoundaryForce;
 	float maxBoundaryForce;
 	float boundaryForceFactor;
 	float forceDistance;
@@ -264,6 +267,7 @@ private:
 	void InsertParticlesCPU();
 	void ComputePressureGrid();
 	void ComputeForceGrid();
+	void ComputeNewForceGrid();
 	void AdvanceStepSimpleCollision();
 	void ComputeDensity();
 	void PositionBasedFluid();
@@ -284,10 +288,11 @@ private:
 	void DrawDomain(Vector3DF& domain_min, Vector3DF& domain_max);
 
 	void setDefaultParams();
-	void setExampleParams(bool bStart);
+	void setExampleParams();
 	void setKernels();
 	void setSpacing();
 	void setInitParticleVolume(const Vector3DI& numParticlesXYZ, const Vector3DF& lengthXYZ, const float jitter);
+	void setInitParticleVolumeNew(const Vector3DI& numParticlesXYZ, const Vector3DF& lengthXYZ, const float jitter);
 	void setGridAllocate(const float border);
 
 	void AllocateParticlesMemory(int cnt);
@@ -330,6 +335,10 @@ inline float ParticleSystem::getDT() {
 	return this->time_step;
 }
 
+inline int ParticleSystem::getFrame() {
+	return this->frame;
+}
+
 inline void ParticleSystem::setToggle(int p) {
 	this->toggle_[p] = !this->toggle_[p];
 }
@@ -340,7 +349,7 @@ inline float ParticleSystem::frand() {
 
 inline float ParticleSystem::IncParam(int p, float v, float mn, float mx) {
 	param_[p] += v;
-	if (param_[p] < mn) param_[p] = mn;
+	if (param_[p] < mn) param_[p] = mx;
 	if (param_[p] > mx) param_[p] = mn;
 	return param_[p];
 }

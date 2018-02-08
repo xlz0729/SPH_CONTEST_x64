@@ -188,10 +188,10 @@ static void draw2D() {
 		sprintf(disp, "Advance Time:        %.3f ms", g_fluid_system.getParam(PTIME_ADVANCE));
 		drawText2D(20, 240, disp);
 
-		sprintf(disp, "other force Time:    %.3f ms", g_fluid_system.getParam(PTIME_OTHER_FORCE));
+		sprintf(disp, "PBF Step Time:       %.3f ms", g_fluid_system.getParam(PTIME_PBF_STEP));
 		drawText2D(20, 260, disp);
 
-		sprintf(disp, "PBF Step Time:       %.3f ms", g_fluid_system.getParam(PTIME_PBF_STEP));
+		sprintf(disp, "Frame:               %d", g_fluid_system.getFrame());
 		drawText2D(20, 280, disp);
 
 		float st = 0.0f;
@@ -201,7 +201,7 @@ static void draw2D() {
 			st = g_fluid_system.getParam(PTIME_INSERT) + g_fluid_system.getParam(PTIME_PRESS) + g_fluid_system.getParam(PTIME_FORCE) + g_fluid_system.getParam(PTIME_ADVANCE);
 			break;
 		case RUN_CPU_PBF:
-			st = g_fluid_system.getParam(PTIME_INSERT) + g_fluid_system.getParam(PTIME_PRESS) + g_fluid_system.getParam(PTIME_FORCE) + g_fluid_system.getParam(PTIME_ADVANCE);
+			st = g_fluid_system.getParam(PTIME_INSERT) + g_fluid_system.getParam(PTIME_PRESS) + g_fluid_system.getParam(PTIME_FORCE) + g_fluid_system.getParam(PTIME_ADVANCE) + g_fluid_system.getParam(PTIME_PBF_STEP);
 			break;
 		default:
 			st = g_fluid_system.getParam(PTIME_INSERT) + g_fluid_system.getParam(PTIME_PRESS) + g_fluid_system.getParam(PTIME_FORCE) + g_fluid_system.getParam(PTIME_ADVANCE);
@@ -333,14 +333,14 @@ static void keyboard_func(unsigned char key, int x, int y) {
 		// 上一种模拟方法
 	case 'f':
 	case 'F':
-		g_fluid_system.IncParam(PRUN_MODE, -1, 0, 1);
-		g_fluid_system.setUp(false);
+		g_fluid_system.IncParam(PRUN_MODE, -1, 0, 2);
+		g_fluid_system.setUp();
 		break;
 		// 下一种模拟方法
 	case 'g':
 	case 'G':
-		g_fluid_system.IncParam(PRUN_MODE, 1, 0, 1);
-		g_fluid_system.setUp(false);
+		g_fluid_system.IncParam(PRUN_MODE, 1, 0, 2);
+		g_fluid_system.setUp();
 		break;
 		// 显示/隐藏均匀网格边界
 	case '1':
@@ -408,14 +408,14 @@ static void keyboard_func(unsigned char key, int x, int y) {
 		break;
 		// 上一个场景
 	case '[':
-		g_fluid_system.IncParam(PEXAMPLE, -1, 0, 3);
-		g_fluid_system.setUp(true);
+		g_fluid_system.IncParam(PEXAMPLE, -1, 0, 1);
+		g_fluid_system.setUp();
 		UpdateEmit();
 		break;
 		// 下一个场景
 	case ']':
-		g_fluid_system.IncParam(PEXAMPLE, +1, 0, 3);
-		g_fluid_system.setUp(true);
+		g_fluid_system.IncParam(PEXAMPLE, +1, 0, 1);
+		g_fluid_system.setUp();
 		UpdateEmit();
 		break;
 	case 27:
@@ -581,7 +581,7 @@ static void glInit() {
 	g_obj_angles.x = 118.7;	g_obj_angles.y = 200;	g_obj_angles.z = 1.0;
 	g_obj_dang.x = 1;	g_obj_dang.y = 1;		g_obj_dang.z = 0;
 
-	g_fluid_system.setUp(true);
+	g_fluid_system.setUp();
 	g_fluid_system.setVec(PEMIT_ANG, Vector3DF(g_obj_angles.x, g_obj_angles.y, g_obj_angles.z));
 	g_fluid_system.setVec(PEMIT_POS, Vector3DF(g_obj_from.x, g_obj_from.y, g_obj_from.z));
 

@@ -1,37 +1,11 @@
 #include "fluid_system.h"
-/*
-FLUIDS v.3 - SPH Fluid Simulator for CPU and GPU
-Copyright (C) 2012. Rama Hoetzlein, http://fluids3.com
-
-Fluids-ZLib license (* see part 1 below)
-This software is provided 'as-is', without any express or implied
-warranty.  In no event will the authors be held liable for any damages
-arising from the use of this software.
-
-Permission is granted to anyone to use this software for any purpose,
-including commercial applications, and to alter it and redistribute it
-freely, subject to the following restrictions:
-
-1. The origin of this software must not be misrepresented; you must not
-claim that you wrote the original software. Acknowledgement of the
-original author is required if you publish this in a paper, or use it
-in a product. (See fluids3.com for details)
-2. Altered source versions must be plainly marked as such, and must not be
-misrepresented as being the original software.
-3. This notice may not be removed or altered from any source distribution.
-*/
-
-#include "fluid_system.h"
 
 ParticleSystem::ParticleSystem() {
 	frame = 0;
 	time_ = 0;
 
-	// 程序运行方法---6种方法可选
+	// 程序运行方法---3种方法可选
 	param_[PRUN_MODE] = RUN_CPU_SPH;
-
-	// 是否加载3D模型数据
-	toggle_[PUSELOADEDSCENE] = false;
 
 	points_number = 0;
 
@@ -55,13 +29,13 @@ ParticleSystem::~ParticleSystem() {
 }
 
 // 程序运行入口, 内存分配
-void ParticleSystem::setUp(bool bStart) {
+void ParticleSystem::setUp() {
 	frame = 0;
 	time_ = 0;
 
 	setDefaultParams();
 
-	setExampleParams(bStart);
+	setExampleParams();
 
 	param_[PGRIDSIZEREALSCALE] = param_[PSMOOTHRADIUS] / param_[PGRID_DENSITY];
 
@@ -85,7 +59,14 @@ void ParticleSystem::setUp(bool bStart) {
 	AllocateParticlesMemory(param_[PMAXNUM]);
 
 	points_number = 0;
-	setInitParticleVolume(numParticlesXYZ, lengthXYZ, 0.1);
+	switch ((int)param_[PEXAMPLE]) {
+		case 0:
+			setInitParticleVolume(numParticlesXYZ, lengthXYZ, 0.1);
+			break;
+		case 1:
+			setInitParticleVolumeNew(numParticlesXYZ, lengthXYZ, 0.1);
+			break;
+	}
 	setGridAllocate(1.0);
 }
 
@@ -170,6 +151,9 @@ std::string ParticleSystem::getModeStr() {
 	case RUN_CPU_PBF:
 		buf = "SIMULATE CPU PBF";
 		break;
+	case RUN_CPU_XLZ:
+		buf = "SIMULATE CPU XLZ";
+		break;
 	};
 	return buf;
 };
@@ -193,6 +177,9 @@ void ParticleSystem::Run() {
 		break;
 	case RUN_CPU_PBF:
 		RunCPUPBF();
+		break;
+	case RUN_CPU_XLZ:
+		RunCPUXLZ();
 		break;
 	}
 
@@ -252,6 +239,31 @@ void ParticleSystem::RunCPUPBF() {
 	start.SetSystemTime(ACC_NSEC);
 	PositionBasedFluid();
 	Record(PTIME_PBF_STEP, "PBF Step Time", start);
+}
+
+void ParticleSystem::RunCPUXLZ()
+{
+	mint::Time start;
+
+	// 插入粒子
+	start.SetSystemTime(ACC_NSEC);
+	InsertParticlesCPU();
+	Record(PTIME_INSERT, "Insert CPU SPH", start);
+
+	// 计算压力和密度
+	start.SetSystemTime(ACC_NSEC);
+	ComputePressureGrid();
+	Record(PTIME_PRESS, "Press CPU SPH", start);
+
+	// 计算外力
+	start.SetSystemTime(ACC_NSEC);
+	ComputeNewForceGrid();
+	Record(PTIME_FORCE, "Force CPU SPH", start);
+
+	// 移动粒子
+	start.SetSystemTime(ACC_NSEC);
+	AdvanceStepSimpleCollision();
+	Record(PTIME_ADVANCE, "Advance CPU SPH", start);
 }
 
 void ParticleSystem::InsertParticlesCPU() {
@@ -391,9 +403,88 @@ void ParticleSystem::ComputeForceGrid() {
 		force *= points[i].mass;
 		force += gravity * points[i].mass;
 
-		if (addBoundaryForce) {
-			force += BoxBoundaryForce(i);
+		points[i].force = force;
+
+	}
+}
+
+void ParticleSystem::ComputeNewForceGrid() {
+
+	const float simScale = param_[PSIMSCALE];
+	const float simScaleSquare = simScale * simScale;
+	const float smoothRadius = param_[PSMOOTHRADIUS];
+	const float smoothRadiusSquare = smoothRadius * smoothRadius;
+	Vector3DF   gravity = vec_[PPLANE_GRAV_DIR];
+	const float eps = 1.0e-8;
+
+	for (int i = 0; i < points_number; i++) {
+		points[i].force.Set(0, 0, 0);
+		Vector3DF pforce(0, 0, 0);
+		Vector3DF vforce(0, 0, 0);
+		Vector3DF force(0, 0, 0);
+		Vector3DF ipos = points[i].pos;
+		Vector3DF iveleval = points[i].vel_eval;
+		float	  heamocytes = 0.0f;
+		float	  blood = 0.0f;
+		float	  ipress = points[i].pressure;
+		float	  idensity = points[i].density;
+		Vector3DF D(0, 0, 0);
+
+		const uint iCellIndex = points[i].particle_grid_cell_index;
+		if (iCellIndex != UNDEFINE) {
+			for (int cell = 0; cell < grid_adj_cnt; cell++) {
+				const int neighbor_cell_index = iCellIndex + grid_neighbor_cell_index_offset_[cell];
+				if (neighbor_cell_index == UNDEFINE || (neighbor_cell_index < 0 || neighbor_cell_index > grid_total - 1)) {
+					continue;
+				}
+
+				int j = grid[neighbor_cell_index].first_particle_index;
+				while (j != UNDEFINE) {
+					blood += 1.0f;
+					if (points[j].flag == HAEMOCYTES) {
+						heamocytes += 1.0f;
+					}
+					if (i == j) {
+						j = points[j].next_particle_index_in_the_same_cell;
+						continue;
+					}
+
+					Vector3DF ri_rj = ipos - points[j].pos;
+					const float ri_rjSquare = simScaleSquare*(ri_rj.x*ri_rj.x + ri_rj.y*ri_rj.y + ri_rj.z*ri_rj.z);
+					if (ri_rjSquare <= smoothRadiusSquare) {
+						//
+						const float jdist = sqrt(ri_rjSquare);
+						const float jpress = points[j].pressure;
+						const float h_r = smoothRadius - jdist;
+						const float pterm = -0.5f * h_r * spiky_kern * (ipress + jpress) / (jdist + eps);
+						const float dterm = h_r / (idensity * points[j].density);
+
+						Vector3DF uj_ui = points[j].vel_eval;
+						uj_ui -= iveleval;
+
+						pforce += ri_rj * simScale * pterm * dterm  * points[j].mass;
+
+						vforce += uj_ui * lap_kern * dterm * points[j].mass;
+
+						Vector3DF vr(uj_ui.x*ri_rj.x, uj_ui.y*ri_rj.y, uj_ui.z*ri_rj.z);
+
+						vr *= lap_kern * points[j].mass * h_r * h_r / (points[i].density * jdist + eps);
+
+						D += vr;
+					}
+					j = points[j].next_particle_index_in_the_same_cell;
+				}
+			}
 		}
+
+		float d = 1.414 * (D.x + D.y + D.z);
+
+		float K = 1.0f;
+		float visc = 4.0f + 10.0f / (1 + K * d);
+		float hct = heamocytes / blood;
+		vforce *= visc * pow(0.6 + hct, 3);
+		//printf("%.6f\n", d);
+		force += (gravity + pforce + vforce) * points[i].mass;
 
 		points[i].force = force;
 
@@ -485,6 +576,7 @@ void ParticleSystem::PositionBasedFluid() {
 	float C = 0.0;
 	int m_iterations = 0;
 	float avg_density_devergence_err = 0;
+	float simScale5 = pow(simScale, 4);
 
 	while (((avg_density_devergence_err > 0.132) || (m_iterations < 2)) && (m_iterations < 5)) {
 		ComputeDensity();
@@ -493,8 +585,9 @@ void ParticleSystem::PositionBasedFluid() {
 			const uint	i_cell_index = points[i].particle_grid_cell_index;
 			Vector3DF	ipos = points[i].pos;
 
-			Vector3DF	triCi(0, 0, 0);
-			float		triCjSquareSum = 0.0f;
+			float		sumdeta2 = 0.0;
+			float		sumdevergencei = 0.0;
+			Vector3DF	sumdetai(0, 0, 0);
 			if (i_cell_index != UNDEFINE) {
 				for (int cell = 0; cell < grid_adj_cnt; cell++) {
 
@@ -512,13 +605,21 @@ void ParticleSystem::PositionBasedFluid() {
 
 						Vector3DF ri_rj = ipos - points[j].pos;
 
-						const float ri_rjSquare = simScaleSquare*(ri_rj.x*ri_rj.x + ri_rj.y*ri_rj.y + ri_rj.z*ri_rj.z);
-						if (ri_rjSquare <= smoothRadiusSquare) {
-							const float r = sqrt(ri_rjSquare);
-							const float h2_r2 = smoothRadius * smoothRadius - r * r;
-							Vector3DF triCj = ipos * -6 * h2_r2 * h2_r2 * poly6_kern * mass * (1 / denstity0);
-							triCi += triCj;
-							triCjSquareSum += triCj.x*triCj.x + triCj.y*triCj.y + triCj.z*triCj.z;
+						const float ri_rjSquare = ri_rj.x*ri_rj.x + ri_rj.y*ri_rj.y + ri_rj.z*ri_rj.z;
+						if (ri_rjSquare * simScaleSquare <= smoothRadiusSquare) {
+							const float jdist = sqrt(ri_rjSquare);
+							const float h_minus_r = smoothRadius/simScale - jdist;//h-|pi-pj|
+							const float h_minus_r2 = h_minus_r * h_minus_r;//(h-|pi-pj|)2
+							Vector3DF pi_pjnorm = ri_rj * (1.0f / (jdist + eps));//pi-pj|pi-pj|
+							Vector3DF labataj = (pi_pjnorm * h_minus_r2) * lap_kern * simScale5 * mass * (1 / denstity0);
+							const float ladx = labataj.x;
+							const float lady = labataj.y;
+							const float ladz = labataj.z;
+							const float lababta2_i = (ladx*ladx + lady*lady + ladz*ladz);
+
+							sumdeta2 += lababta2_i;
+
+							sumdetai += labataj;
 						}
 						j = points[j].next_particle_index_in_the_same_cell;
 					}
@@ -527,9 +628,9 @@ void ParticleSystem::PositionBasedFluid() {
 
 			C = (points[i].density) / denstity0 - 1;
 
-			Vector3DF dataRi = triCi * -1 * C;
-			dataRi /= (triCjSquareSum + triCi.x*triCi.x + triCi.y*triCi.y + triCi.z*triCi.z + eps) * simScale;
-			points[i].pos += dataRi;
+			float sumdetai2 = (sumdetai.x*sumdetai.x + sumdetai.y*sumdetai.y + sumdetai.z*sumdetai.z);
+			Vector3DF detaposi = sumdetai * ((-1)*C / (sumdeta2 + sumdetai2 + eps));
+			points[i].pos += detaposi * 0.00000001f;
 			avg_density_devergence_err += abs(C);
 		}
 		avg_density_devergence_err /= points_number;
@@ -594,10 +695,10 @@ void ParticleSystem::ComputeGasConstAndTimeStep() {
 	time_step_sph = courantFactor * param_[PSMOOTHRADIUS] / relevantSpeed;
 	time_step_pbf = 0.001;
 
-	if (param_[PRUN_MODE] == RUN_CPU_SPH)
-		time_step = time_step_sph;
-	else
+	if (param_[PRUN_MODE] == RUN_CPU_PBF)
 		time_step = time_step_pbf;
+	else
+		time_step = time_step_sph;
 }
 
 // 边界碰撞
@@ -919,7 +1020,7 @@ void ParticleSystem::setDefaultParams() {
 	param_[PMAXNUM] = 8388608;
 	param_[PSIMSCALE] = 0.005;
 	param_[PGRID_DENSITY] = 1.0;
-	param_[PVISC] = 4.0;			
+	param_[PVISC] = 16.0;			
 	param_[PRESTDENSITY] = 1051.0; //1000.0;
 	param_[PMASS] = 0.002052734; //0.001953125;
 	param_[PCOLLISIONRADIUS] = 0.00775438;
@@ -961,63 +1062,27 @@ void ParticleSystem::setDefaultParams() {
 
 }
 
-void ParticleSystem::setExampleParams(bool bStart) {
+void ParticleSystem::setExampleParams() {
 
 	switch ((int)param_[PEXAMPLE]) {
-	case 0:
-		if (toggle_[PUSELOADEDSCENE] == true) {
-			vec_[PBOUNDARYMIN].Set(-80, 0, -80);
-			vec_[PBOUNDARYMAX].Set(80, 160, 80);
-			vec_[PINITPARTICLEMIN].Set(-80, 0, -80);
-			vec_[PINITPARTICLEMAX].Set(80, 10, 80);
-		}
-		else { //   
-			vec_[PBOUNDARYMIN].Set(-60, 0, -100);
-			vec_[PBOUNDARYMAX].Set(60, 90, 0);
-			vec_[PINITPARTICLEMIN].Set(0, 0, -100);
-			vec_[PINITPARTICLEMAX].Set(60, 60, 0);
-		}
+	case 0:  
+		vec_[PBOUNDARYMIN].Set(-60, 0, -100);
+		vec_[PBOUNDARYMAX].Set(60, 90, 0);
+		vec_[PINITPARTICLEMIN].Set(0, 0, -100);
+		vec_[PINITPARTICLEMAX].Set(60, 60, 0);
 		param_[PFORCE_MIN] = 0.0;
 		param_[PGROUND_SLOPE] = 0.0;
 		break;
 
 	case 1:
-		if (toggle_[PUSELOADEDSCENE] == true) {
-			vec_[PBOUNDARYMIN].Set(-80, 0, -80);
-			vec_[PBOUNDARYMAX].Set(80, 160, 80);
-			vec_[PINITPARTICLEMIN].Set(-80, 0, -80);
-			vec_[PINITPARTICLEMAX].Set(80, 20, 80);
-		}
-		else {
-			vec_[PBOUNDARYMIN].Set(-80, 0, -80);
-			vec_[PBOUNDARYMAX].Set(80, 160, 80);
-			vec_[PINITPARTICLEMIN].Set(-80, 0, -80);
-			vec_[PINITPARTICLEMAX].Set(80, 20, 80);
-		}
+		vec_[PBOUNDARYMIN].Set(-50, 0, -100);
+		vec_[PBOUNDARYMAX].Set(50, 100, 0);
+		vec_[PINITPARTICLEMIN].Set(-50, 30, -70);
+		vec_[PINITPARTICLEMAX].Set(50, 70, -30);
 		param_[PFORCE_MIN] = 20.0;
 		param_[PGROUND_SLOPE] = 0.10;
 		break;
-
-	case 2:
-		if (toggle_[PUSELOADEDSCENE] == true) {
-			vec_[PBOUNDARYMIN].Set(-80, 0, -80);
-			vec_[PBOUNDARYMAX].Set(80, 160, 80);
-			vec_[PINITPARTICLEMIN].Set(-80, 0, -80);
-			vec_[PINITPARTICLEMAX].Set(80, 30, 80);
-		}
-		else {
-			vec_[PBOUNDARYMIN].Set(-80, 0, -80);
-			vec_[PBOUNDARYMAX].Set(80, 160, 80);
-			vec_[PINITPARTICLEMIN].Set(-80, 0, -80);
-			vec_[PINITPARTICLEMAX].Set(80, 60, 80);
-		}
-		param_[PFORCE_MIN] = 20.0;
-		param_[PFORCE_MAX] = 20.0;
-		break;
 	}
-
-	// 从xml文件中加载场景
-	// ParseXML("Scene", (int)param_[PEXAMPLE], bStart);
 }
 
 void ParticleSystem::setKernels() {
@@ -1052,8 +1117,7 @@ void ParticleSystem::setSpacing() {
 
 void ParticleSystem::setInitParticleVolume(const Vector3DI& numParticlesXYZ, const Vector3DF& lengthXYZ, const float jitter) {
 
-	srand(time(0x0));
-
+	std::random_device rd;
 	float spacingRealWorldSize = param_[PSPACINGREALWORLD];
 	float particleVolumeRealWorldSize = spacingRealWorldSize * spacingRealWorldSize *spacingRealWorldSize;
 	float mass = param_[PRESTDENSITY] * particleVolumeRealWorldSize;
@@ -1084,15 +1148,73 @@ void ParticleSystem::setInitParticleVolume(const Vector3DI& numParticlesXYZ, con
 					points[i].pos.Set(x + (frand() - 0.5) * jitter, y + (frand() - 0.5) * jitter, z + (frand() - 0.5) * jitter);
 					points[i].vel.Set(0.0, 0.0, 0.0);
 					points[i].vel_eval.Set(0.0, 0.0, 0.0);
-					if (rand() % 100 < 60) {
+					if (rd() % 100 < 60) {
 						points[i].mass = 0.002001953;
 						points[i].clr = COLORA(0.45, 0.45, 0.45, 1);
+						points[i].flag = PLASMA;
 					}
 					else {
 						points[i].mass = 0.002128906;
 						points[i].clr = COLORA(0.98, 0.05, 0.05, 1);
+						points[i].flag = HAEMOCYTES;
 					}
 					
+					points_number++;
+				}
+				++i;
+			}
+		}
+	}
+}
+
+void ParticleSystem::setInitParticleVolumeNew(const Vector3DI& numParticlesXYZ, const Vector3DF& lengthXYZ, const float jitter) {
+
+	std::random_device rd;
+	float spacingRealWorldSize = param_[PSPACINGREALWORLD];
+	float particleVolumeRealWorldSize = spacingRealWorldSize * spacingRealWorldSize *spacingRealWorldSize;
+	float mass = param_[PRESTDENSITY] * particleVolumeRealWorldSize;
+
+	float tmpX, tmpY, tmpZ;
+	if (numParticlesXYZ.x % 2 == 0) tmpX = 0.0;
+	else                            tmpX = 0.5;
+	if (numParticlesXYZ.y % 2 == 0) tmpY = 0.0;
+	else                            tmpY = 0.5;
+	if (numParticlesXYZ.z % 2 == 0) tmpZ = 0.0;
+	else                            tmpZ = 0.5;
+
+	float midy = (vec_[PINITPARTICLEMIN].y + vec_[PINITPARTICLEMAX].y) / 2.0f;
+	float midz = (vec_[PINITPARTICLEMIN].z + vec_[PINITPARTICLEMAX].z) / 2.0f;
+	float r = (vec_[PINITPARTICLEMAX].z - vec_[PINITPARTICLEMIN].z) / 2.0f;
+
+	int i = points_number;
+	for (int iy = 0; iy < numParticlesXYZ.y; iy++) {
+
+		float y = vec_[PINITPARTICLEMIN].y + (iy + tmpY) * param_[PSPACINGGRAPHICSWORLD];
+
+		for (int ix = 0; ix < numParticlesXYZ.x; ix++) {
+
+			float x = vec_[PINITPARTICLEMIN].x + (ix + tmpX) * param_[PSPACINGGRAPHICSWORLD];
+
+			for (int iz = 0; iz < numParticlesXYZ.z; iz++) {
+
+				float z = vec_[PINITPARTICLEMIN].z + (iz + tmpZ) * param_[PSPACINGGRAPHICSWORLD];
+
+				if (points_number < param_[PMAXNUM] && pow(y - midy, 2) + pow(z - midz, 2) <= r * r) {
+
+					points[i].pos.Set(x + (frand() - 0.5) * jitter, y + (frand() - 0.5) * jitter, z + (frand() - 0.5) * jitter);
+					points[i].vel.Set(0.0, 0.0, 0.0);
+					points[i].vel_eval.Set(0.0, 0.0, 0.0);
+					if (rd() % 100 < 60) {
+						points[i].mass = 0.002001953;
+						points[i].clr = COLORA(0.45, 0.45, 0.45, 1);
+						points[i].flag = PLASMA;
+					}
+					else {
+						points[i].mass = 0.002128906;
+						points[i].clr = COLORA(0.98, 0.05, 0.05, 1);
+						points[i].flag = HAEMOCYTES;
+					}
+
 					points_number++;
 				}
 				++i;
