@@ -1,7 +1,7 @@
 <Fluid>
 	<DT>			0.003		</DT>
 	<SimScale>		0.005		</SimScale>
-	<Viscosity>	4.0	</Viscosity>
+	<Viscosity>	1.002	</Viscosity>
 	<RestDensity>	1051.0		</RestDensity>
 	<Mass>		0.002052734	</Mass>
 	<Radius>		0.00775438		</Radius>

@@ -185,6 +185,13 @@ void ParticleSystem::Run() {
 
 	time_ += time_step;
 	frame++;
+
+	if (frame == 1001) {
+		system("pause");
+	}
+	else if (frame == 2001) {
+		system("pause");
+	}
 }
 
 void ParticleSystem::RunCPUSPH() {
@@ -418,17 +425,15 @@ void ParticleSystem::ComputeNewForceGrid() {
 	const float eps = 1.0e-8;
 
 	for (int i = 0; i < points_number; i++) {
-		points[i].force.Set(0, 0, 0);
-		Vector3DF pforce(0, 0, 0);
-		Vector3DF vforce(0, 0, 0);
-		Vector3DF force(0, 0, 0);
+		points[i].force.Set(0.0f, 0.0f, 0.0f);
+		Vector3DF pforce(0.0f, 0.0f, 0.0f);
+		Vector3DF vforce(0.0f, 0.0f, 0.0f);
+		Vector3DF force(0.0f, 0.0f, 0.0f);
 		Vector3DF ipos = points[i].pos;
 		Vector3DF iveleval = points[i].vel_eval;
-		float	  heamocytes = 0.0f;
-		float	  blood = 0.0f;
 		float	  ipress = points[i].pressure;
 		float	  idensity = points[i].density;
-		Vector3DF D(0, 0, 0);
+		Vector3DF D(0.0f, 0.0f, 0.0f);
 
 		const uint iCellIndex = points[i].particle_grid_cell_index;
 		if (iCellIndex != UNDEFINE) {
@@ -440,10 +445,6 @@ void ParticleSystem::ComputeNewForceGrid() {
 
 				int j = grid[neighbor_cell_index].first_particle_index;
 				while (j != UNDEFINE) {
-					blood += 1.0f;
-					if (points[j].flag == HAEMOCYTES) {
-						heamocytes += 1.0f;
-					}
 					if (i == j) {
 						j = points[j].next_particle_index_in_the_same_cell;
 						continue;
@@ -466,9 +467,9 @@ void ParticleSystem::ComputeNewForceGrid() {
 
 						vforce += uj_ui * lap_kern * dterm * points[j].mass;
 
-						Vector3DF vr(uj_ui.x*ri_rj.x, uj_ui.y*ri_rj.y, uj_ui.z*ri_rj.z);
+						Vector3DF vr = uj_ui * spiky_kern * points[i].mass;
 
-						vr *= lap_kern * points[j].mass * h_r * h_r / (points[i].density * jdist + eps);
+						vr /= points[i].density + eps;
 
 						D += vr;
 					}
@@ -477,13 +478,17 @@ void ParticleSystem::ComputeNewForceGrid() {
 			}
 		}
 
-		float d = 1.414 * (D.x + D.y + D.z);
+		float d = 1.414 * fabs(D.x + D.y + D.z);
 
 		float K = 1.0f;
-		float visc = 4.0f + 10.0f / (1 + K * d);
-		float hct = heamocytes / blood;
-		vforce *= visc * pow(0.6 + hct, 3);
-		//printf("%.6f\n", d);
+		float visc = 64.0f - 48.0f / (1.0f + d);
+		float tau = visc * sqrtf(D.x * D.x + D.y * D.y + D.z * D.z);
+		//printf("%.6f\t%.6f\t%.6f\t", d, visc, tau);
+		visc = 10.0f * (tau - 0.07f) / pow(sqrtf(tau) - sqrtf(0.07f), 2);
+		if (tau < 7.0f) visc = 0.0f;
+		//printf("%.6f\n", visc);
+
+		vforce *= visc;
 		force += (gravity + pforce + vforce) * points[i].mass;
 
 		points[i].force = force;
@@ -807,7 +812,7 @@ void ParticleSystem::Draw(Camera3D& cam, float rad) {
 	glDisable(GL_LIGHTING);
 
 	if (toggle_[PDRAWGRIDCELLS]) {
-		glColor4f(0.0, 0.0, 1.0, 0.1);
+		glColor4f(1.0, 0.0, 0.0, 1.0);
 		DrawGrid();
 	}
 
@@ -1020,7 +1025,7 @@ void ParticleSystem::setDefaultParams() {
 	param_[PMAXNUM] = 8388608;
 	param_[PSIMSCALE] = 0.005;
 	param_[PGRID_DENSITY] = 1.0;
-	param_[PVISC] = 16.0;			
+	param_[PVISC] = 4.0;			
 	param_[PRESTDENSITY] = 1051.0; //1000.0;
 	param_[PMASS] = 0.002052734; //0.001953125;
 	param_[PCOLLISIONRADIUS] = 0.00775438;
@@ -1075,12 +1080,12 @@ void ParticleSystem::setExampleParams() {
 		break;
 
 	case 1:
-		vec_[PBOUNDARYMIN].Set(-50, 0, -100);
-		vec_[PBOUNDARYMAX].Set(50, 100, 0);
-		vec_[PINITPARTICLEMIN].Set(-50, 30, -70);
-		vec_[PINITPARTICLEMAX].Set(50, 70, -30);
-		param_[PFORCE_MIN] = 20.0;
-		param_[PGROUND_SLOPE] = 0.10;
+		vec_[PBOUNDARYMIN].Set(-80, 0, -80);
+		vec_[PBOUNDARYMAX].Set(80, 160, 80);
+		vec_[PINITPARTICLEMIN].Set(-80, 0, -80);
+		vec_[PINITPARTICLEMAX].Set(80, 20, 80);
+		param_[PFORCE_MIN] = 0.0;
+		param_[PGROUND_SLOPE] = 0.0;
 		break;
 	}
 }
@@ -1182,10 +1187,6 @@ void ParticleSystem::setInitParticleVolumeNew(const Vector3DI& numParticlesXYZ, 
 	if (numParticlesXYZ.z % 2 == 0) tmpZ = 0.0;
 	else                            tmpZ = 0.5;
 
-	float midy = (vec_[PINITPARTICLEMIN].y + vec_[PINITPARTICLEMAX].y) / 2.0f;
-	float midz = (vec_[PINITPARTICLEMIN].z + vec_[PINITPARTICLEMAX].z) / 2.0f;
-	float r = (vec_[PINITPARTICLEMAX].z - vec_[PINITPARTICLEMIN].z) / 2.0f;
-
 	int i = points_number;
 	for (int iy = 0; iy < numParticlesXYZ.y; iy++) {
 
@@ -1199,12 +1200,12 @@ void ParticleSystem::setInitParticleVolumeNew(const Vector3DI& numParticlesXYZ, 
 
 				float z = vec_[PINITPARTICLEMIN].z + (iz + tmpZ) * param_[PSPACINGGRAPHICSWORLD];
 
-				if (points_number < param_[PMAXNUM] && pow(y - midy, 2) + pow(z - midz, 2) <= r * r) {
+				if (points_number < param_[PMAXNUM]) {
 
 					points[i].pos.Set(x + (frand() - 0.5) * jitter, y + (frand() - 0.5) * jitter, z + (frand() - 0.5) * jitter);
 					points[i].vel.Set(0.0, 0.0, 0.0);
 					points[i].vel_eval.Set(0.0, 0.0, 0.0);
-					if (rd() % 100 < 60) {
+					if (iy > numParticlesXYZ.y * 0.3) {
 						points[i].mass = 0.002001953;
 						points[i].clr = COLORA(0.45, 0.45, 0.45, 1);
 						points[i].flag = PLASMA;
@@ -1281,3 +1282,4 @@ void ParticleSystem::Record(int param, std::string name, mint::Time& start) {
 	param_[param] = stop.GetMSec();
 	if (toggle_[PPROFILE]) printf("%s:  %s\n", name.c_str(), stop.GetReadableTime().c_str());
 }
+

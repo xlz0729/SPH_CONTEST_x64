@@ -30,13 +30,7 @@
     <ClCompile Include="src\common\mdebug.cpp">
       <Filter>源文件\common</Filter>
     </ClCompile>
-    <ClCompile Include="src\common\gl_helper.cpp">
-      <Filter>源文件\common</Filter>
-    </ClCompile>
     <ClCompile Include="src\common\camera3d.cpp">
-      <Filter>源文件\common</Filter>
-    </ClCompile>
-    <ClCompile Include="src\common\glee.c">
       <Filter>源文件\common</Filter>
     </ClCompile>
     <ClCompile Include="src\common\image.cpp">
@@ -60,15 +54,27 @@
     <ClCompile Include="src\common\utilities.cpp">
       <Filter>源文件\common</Filter>
     </ClCompile>
+    <ClCompile Include="src\common\tinystr.cpp">
+      <Filter>源文件\common</Filter>
+    </ClCompile>
+    <ClCompile Include="src\common\tinyxmlerror.cpp">
+      <Filter>源文件\common</Filter>
+    </ClCompile>
+    <ClCompile Include="src\common\tinyxmlparser.cpp">
+      <Filter>源文件\common</Filter>
+    </ClCompile>
+    <ClCompile Include="src\common\glee.c">
+      <Filter>源文件\common</Filter>
+    </ClCompile>
+    <ClCompile Include="src\common\gl_helper.cpp">
+      <Filter>源文件\common</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\common\mdebug.h">
       <Filter>头文件\common</Filter>
     </ClInclude>
     <ClInclude Include="src\common\mtime.h">
-      <Filter>头文件\common</Filter>
-    </ClInclude>
-    <ClInclude Include="src\common\glee.h">
       <Filter>头文件\common</Filter>
     </ClInclude>
     <ClInclude Include="src\common\gl_helper.h">
@@ -111,6 +117,15 @@
       <Filter>头文件\common</Filter>
     </ClInclude>
     <ClInclude Include="src\common\utilities.h">
+      <Filter>头文件\common</Filter>
+    </ClInclude>
+    <ClInclude Include="src\common\tinystr.h">
+      <Filter>头文件\common</Filter>
+    </ClInclude>
+    <ClInclude Include="src\common\glee.h">
+      <Filter>头文件\common</Filter>
+    </ClInclude>
+    <ClInclude Include="src\common\glext.h">
       <Filter>头文件\common</Filter>
     </ClInclude>
   </ItemGroup>

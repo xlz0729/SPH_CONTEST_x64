@@ -57,7 +57,7 @@ misrepresented as being the original software.
 #define PSIMSCALE				4	// 缩放比例
 #define PGRID_DENSITY			5	// grid的密度
 #define PGRIDSIZEREALSCALE		6	// grid的真实缩放比例
-#define PVISC					7	// 体积
+#define PVISC					7	// 黏度
 #define PRESTDENSITY			8	// 密度
 #define PMASS					9	// 质量
 #define PCOLLISIONRADIUS		10  // 碰撞半径
@@ -129,6 +129,7 @@ misrepresented as being the original software.
 #define PPRINTDEBUGGINGINFO		15
 #define PDRAWDOMAIN				16
 #define	PDRAWGRIDBOUND			17
+#define PUSELOADEDSCENE			18
 
 // 粒子类型
 #define PLASMA		0
@@ -136,7 +137,6 @@ misrepresented as being the original software.
 
 // 全局变量
 const int grid_adj_cnt = 27;
-
 
 // 粒子数据结构
 struct Particle
